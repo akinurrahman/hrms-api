@@ -3,9 +3,11 @@ import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation.js';
 import { Role } from '../generated/prisma/enums.js';
+import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -36,6 +38,41 @@ export class AuthService {
     return tokens;
   }
 
+  async refreshTokens(dto: RefreshTokenDto) {
+    let payload: { sub: string; email: string; role: Role };
+    try {
+      payload = await this.jwtService.verifyAsync(dto.refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const hashedToken = this.hashToken(dto.refreshToken);
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: {
+        userId: payload.sub,
+        token: hashedToken,
+        revoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: { revoked: true },
+    });
+
+    if (count === 0) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    const tokens = await this.generateTokens(
+      payload.sub,
+      payload.email,
+      payload.role,
+    );
+    await this.saveRefreshToken(payload.sub, tokens.refreshToken);
+
+    return tokens;
+  }
+
   private async generateTokens(userId: string, email: string, role: Role) {
     const payload = { sub: userId, email, role };
 
@@ -52,8 +89,12 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
   private async saveRefreshToken(userId: string, refreshToken: string) {
-    const hashedToken = await bcrypt.hash(refreshToken, 10);
+    const hashedToken = this.hashToken(refreshToken);
 
     const expiresInSeconds =
       this.configService.get<number>('JWT_REFRESH_EXPIRY');
