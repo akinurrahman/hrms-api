@@ -2,6 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 
+import { Reflector } from '@nestjs/core';
+import { HttpExceptionFilter, TransformInterceptor } from './common/index.js';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -11,6 +14,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  app.useGlobalInterceptors(new TransformInterceptor(new Reflector()));
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   await app.listen(process.env.PORT ?? 8000);
 }
