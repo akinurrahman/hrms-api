@@ -3,6 +3,7 @@ import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ResponseMessage } from '../common/index.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { LogoutDto } from './dto/logout.dto.js';
 
 @Controller('auth')
 export class AuthController {
@@ -20,5 +21,12 @@ export class AuthController {
   @ResponseMessage('Tokens refreshed successfully')
   async refreshTokens(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage("Logout Successfully!")
+  async logout (@Body() dto:LogoutDto){
+    return this.authService.logout(dto)
   }
 }

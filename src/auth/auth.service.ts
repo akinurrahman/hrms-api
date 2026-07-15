@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation.js';
 import { Role } from '../generated/prisma/enums.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
+import { LogoutDto } from './dto/logout.dto.js';
 
 @Injectable()
 export class AuthService {
@@ -36,6 +37,38 @@ export class AuthService {
     await this.saveRefreshToken(user.id, tokens.refreshToken);
 
     return tokens;
+  }
+
+  async logout(dto:LogoutDto){
+    let payload : {sub : string};
+
+    try {
+      payload = await this.jwtService.verifyAsync(dto.refreshToken, {
+        secret : this.configService.get<string>('JWT_REFRESH_SECRET')
+      })
+    } catch{
+      throw new UnauthorizedException("invalid refresh token")
+    }
+
+
+    const tokenHash = this.hashToken(dto.refreshToken)
+
+    const stored = await this.prisma.refreshToken.findFirst({
+      where : {
+        userId : payload.sub,
+        token : tokenHash,
+        revoked : false
+      }
+    })
+
+    if(!stored){
+      throw new UnauthorizedException("Invalid refresh token")
+    }
+
+    await this.prisma.refreshToken.update({
+      where : {id : stored.id},
+      data : {revoked : true}
+    })
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
