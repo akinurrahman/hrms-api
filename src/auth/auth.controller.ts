@@ -1,9 +1,11 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post,  Req,  UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { ResponseMessage } from '../common/index.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { LogoutDto } from './dto/logout.dto.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import type { Request } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -25,8 +27,14 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage("Logout Successfully!")
-  async logout (@Body() dto:LogoutDto){
-    return this.authService.logout(dto)
+  @ResponseMessage('Logout Successfully!')
+  async logout(@Body() dto: LogoutDto) {
+    return this.authService.logout(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getProfile(@Req() req:Request) {
+    return req.user;
   }
 }
