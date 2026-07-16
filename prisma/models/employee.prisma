@@ -1,0 +1,224 @@
+enum EmployeeType {
+  HIGHLY_SKILLED
+  SKILLED
+  SEMI_SKILLED
+  UNSKILLED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model Employee {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  fullName        String
+  email           String   @unique
+  phoneNumber     String   @unique
+  alternateNumber String?
+  dateOfBirth     DateTime @db.Date
+  gender          Gender
+
+  employeeType  EmployeeType
+  designationId String
+  designation   Designation  @relation(fields: [designationId], references: [id])
+  dateOfJoining DateTime     @db.Date
+
+  commAddressLine String
+  commCity        String
+  commState       String
+  commPin         String
+  commCountry     String
+
+  permAddressLine String
+  permCity        String
+  permState       String
+  permPin         String
+  permCountry     String
+
+  sameAsPermanent Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  familyInfo          FamilyInfo?
+  govtIds             GovtIds?
+  bankDetails         BankDetails?
+  employmentHistories EmploymentHistory[]
+  educationRecords    Education[]
+  certificates        Certificate[]
+  documents           Document[]
+}
+
+enum DesignationCategory {
+  HR
+  SUPERVISOR
+  TECHNICIAN
+  ADMIN
+  GENERAL
+}
+
+model Designation {
+  id        String              @id @default(uuid())
+  title     String              @unique
+  category  DesignationCategory
+  employees Employee[]
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum EmergencyContactRelation {
+  FATHER
+  MOTHER
+  BROTHER
+  SISTER
+  UNCLE
+  AUNT
+  SPOUSE
+  FRIEND
+  COUSIN
+}
+
+model FamilyInfo {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  fathersName   String
+  mothersName   String
+  maritalStatus MaritalStatus
+  spouseName    String?
+
+  emergencyContactName     String
+  emergencyContactNumber   String
+  emergencyContactRelation EmergencyContactRelation
+  emergencyContactAddress  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GovtIds {
+  id String @id @default(uuid())
+
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  aadharNo String  @unique
+  panNo    String  @unique
+  uanNo    String? @unique
+  esicNo   String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BankDetails {
+  id String @id @default(uuid())
+
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  accountNo     String
+  ifscCode      String
+  bankName      String
+  branchName    String
+  accountHolder String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bankName, accountNo])
+}
+
+enum SalaryPeriod {
+  DAILY
+  MONTHLY
+  ANNUALLY
+}
+
+model EmploymentHistory {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  orgName             String
+  designation         String
+  startDate           DateTime      @db.Date
+  endDate             DateTime?     @db.Date
+  isCurrentlyWorking  Boolean       @default(false)
+  jobResponsibilities String?
+  salary              Decimal?      @db.Decimal(10, 2)
+  salaryPeriod        SalaryPeriod?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Education {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  instituteName       String
+  courseName          String
+  startDate           DateTime  @db.Date
+  endDate             DateTime? @db.Date
+  isCurrentlyStudying Boolean   @default(false)
+  passingYear         Int?
+  divisionGrade       String?
+  marksObtained       String?
+  remarks             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Certificate {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  certificateName  String
+  issuingOrg       String
+  topicDescription String?
+  certificateUrl   String?
+  issueDate        DateTime? @db.Date
+  expiryDate       DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum DocumentType {
+  AADHAR_CARD
+  PAN_CARD
+  BANK_PASSBOOK
+  NOC
+  OTHER
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type       DocumentType
+  customName String?
+  fileUrl    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
