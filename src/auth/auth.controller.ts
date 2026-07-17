@@ -1,16 +1,16 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post,  Req,  UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post,  Req } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
-import { ResponseMessage } from '../common/index.js';
+import { Public, ResponseMessage } from '../common/index.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { LogoutDto } from './dto/logout.dto.js';
-import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import type { Request } from 'express';
 
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Login successful')
@@ -18,6 +18,7 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Tokens refreshed successfully')
@@ -25,6 +26,7 @@ export class AuthController {
     return this.authService.refreshTokens(dto);
   }
 
+  
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Logout Successfully!')
@@ -32,9 +34,8 @@ export class AuthController {
     return this.authService.logout(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('me')
-  getProfile(@Req() req:Request) {
+  getProfile(@Req() req: Request) {
     return req.user;
   }
 }

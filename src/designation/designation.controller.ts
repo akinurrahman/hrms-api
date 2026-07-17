@@ -46,7 +46,7 @@ export class DesignationController {
   }
 
   @Delete(':id')
-  @ResponseMessage("Designation deleted successfully!")
+  @ResponseMessage('Designation deleted successfully!')
   remove(@Param('id') id: string) {
     return this.designationService.remove(id);
   }
