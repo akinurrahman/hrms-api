@@ -7,7 +7,8 @@ import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation.js';
 import { DesignationModule } from './designation/designation.module.js';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js'; 
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from './auth/guards/roles.guard.js';
 
 @Module({
   imports: [
@@ -25,6 +26,10 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })
