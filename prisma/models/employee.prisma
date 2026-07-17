@@ -60,6 +60,7 @@ enum DesignationCategory {
   TECHNICIAN
   ADMIN
   GENERAL
+  ENGINEER
 }
 
 model Designation {
