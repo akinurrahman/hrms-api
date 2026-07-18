@@ -9,6 +9,8 @@ import { validateEnv } from './config/env.validation.js';
 import { DesignationModule } from './designation/designation.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
+import { EmployeeModule } from './employee/employee.module.js';
+import { UserModule } from './user/user.module.js';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { RolesGuard } from './auth/guards/roles.guard.js';
     PrismaModule,
     AuthModule,
     DesignationModule,
+    EmployeeModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [

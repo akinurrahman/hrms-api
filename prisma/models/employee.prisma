@@ -12,12 +12,12 @@ enum Gender {
 }
 
 model Employee {
-  id     String @id @default(uuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String @id @default(uuid())
+  employeeId String @unique
+  userId     String @unique
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   fullName        String
-  email           String   @unique
   phoneNumber     String   @unique
   alternateNumber String?
   dateOfBirth     DateTime @db.Date
@@ -39,8 +39,6 @@ model Employee {
   permState       String
   permPin         String
   permCountry     String
-
-  sameAsPermanent Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

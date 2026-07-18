@@ -9,6 +9,7 @@ import { EnvironmentVariables } from '../config/env.validation.js';
 import { Role } from '../generated/prisma/enums.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { LogoutDto } from './dto/logout.dto.js';
+import { UserService } from '../user/user.service.js';
 
 @Injectable()
 export class AuthService {
@@ -16,13 +17,11 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService<EnvironmentVariables, true>,
+    private userService: UserService
   ) {}
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
+    const user = await this.userService.findByEmail(dto.email)
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
