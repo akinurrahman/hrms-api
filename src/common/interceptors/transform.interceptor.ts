@@ -8,6 +8,20 @@ import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
+interface PaginatedResult<T> {
+  data: T[];
+  pagination: Record<string, unknown>;
+}
+
+function isPaginatedResult(value: unknown): value is PaginatedResult<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'data' in value &&
+    'pagination' in value
+  );
+}
+
 @Injectable()
 export class TransformInterceptor implements NestInterceptor {
   constructor(private reflector: Reflector) {}
@@ -18,11 +32,22 @@ export class TransformInterceptor implements NestInterceptor {
       'Success';
 
     return next.handle().pipe(
-      map((data: unknown) => ({
-        success: true,
-        message,
-        data,
-      })),
+      map((result: unknown) => {
+        if (isPaginatedResult(result)) {
+          return {
+            success: true,
+            message,
+            data: result.data,
+            pagination: result.pagination,
+          };
+        }
+
+        return {
+          success: true,
+          message,
+          data: result,
+        };
+      }),
     );
   }
 }

@@ -6,6 +6,11 @@ import { Prisma } from '../generated/prisma/client.js';
 import { PrismaErrorCode } from '../common/index.js';
 import { UserService } from '../user/user.service.js';
 import { randomBytes } from 'crypto';
+import { FindEmployeeDto } from './dto/find-employee.dto.js';
+import {
+  buildPaginatedResponse,
+  getPaginationParams,
+} from '../common/utils/paginate.js';
 
 type PrismaTransactionClient = Prisma.TransactionClient;
 
@@ -57,14 +62,46 @@ export class EmployeeService {
           'A user or employee with this email or phone number already exists!',
         );
       }
-      throw error
+      throw error;
     }
   }
 
-  // Not built yet, left as stubs so the controller still compiles.
-  // We'll replace these one at a time after create() is tested.
-  findAll() {
-    return `This action returns all employee`;
+  async findAll(query: FindEmployeeDto) {
+    const { search, page, limit, designationId, employeeType, gender } = query;
+
+    const where: Prisma.EmployeeWhereInput = {
+      ...(designationId && { designationId }),
+      ...(gender && { gender }),
+      ...(employeeType && { employeeType }),
+      ...(search && {
+        OR: [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { employeeId: { contains: search, mode: 'insensitive' } },
+          { user: { email: { contains: search, mode: 'insensitive' } } },
+        ],
+      }),
+    };
+
+    const { take, skip } = getPaginationParams({ page, limit });
+
+    const [data, total] = await this.prisma.$transaction(
+      [
+        this.prisma.employee.findMany({
+          where,
+          include: {
+            designation: true,
+            
+            user: { select: { email: true, role: true, id: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take,
+          skip,
+        }),
+        this.prisma.employee.count({ where }),
+      ],
+      { maxWait: 10000, timeout: 10000 },
+    );
+    return buildPaginatedResponse(data, total, page, limit);
   }
 
   findOne(id: string) {

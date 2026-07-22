@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query } from '@nestjs/common';
 import { EmployeeService } from './employee.service.js';
 import { CreateEmployeeDto } from './dto/create-employee.dto.js';
 import { UpdateEmployeeDto } from './dto/update-employee.dto.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/enums.js';
 import { ResponseMessage } from '../common/index.js';
+import { FindEmployeeDto } from './dto/find-employee.dto.js';
 
 @Controller('employees')
 export class EmployeeController {
@@ -19,8 +20,8 @@ export class EmployeeController {
   @Roles(Role.SITE_ADMIN)
   @ResponseMessage('Employees fetched successfully!')
   @Get()
-  findAll() {
-    return this.employeeService.findAll();
+  findAll(@Query() query: FindEmployeeDto) {
+    return this.employeeService.findAll(query);
   }
 
   @Roles(Role.SITE_ADMIN)
