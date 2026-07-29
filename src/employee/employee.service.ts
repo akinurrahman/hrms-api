@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateEmployeeDto } from './dto/create-employee.dto.js';
 import { UpdateEmployeeDto } from './dto/update-employee.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -90,7 +94,7 @@ export class EmployeeService {
           where,
           include: {
             designation: true,
-            
+
             user: { select: { email: true, role: true, id: true } },
           },
           orderBy: { createdAt: 'desc' },
@@ -104,12 +108,71 @@ export class EmployeeService {
     return buildPaginatedResponse(data, total, page, limit);
   }
 
-  findOne(id: string) {
-    return `This action returns a #${id} employee`;
+  async findOne(id: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      include: {
+        bankDetails: true,
+        certificates: true,
+        designation: true,
+        documents: true,
+        educationRecords: true,
+        employmentHistories: true,
+        familyInfo: true,
+        govtIds: true,
+        user: { select: { email: true, id: true, role: true } },
+      },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+    return employee;
   }
 
-  update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
-    return `This action updates a #${id} employee`;
+  async update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
+    const existing = await this.prisma.employee.findUnique({
+      where: { id },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    try {
+     const { dateOfBirth, dateOfJoining, ...rest } = updateEmployeeDto;
+
+     return await this.prisma.employee.update({
+       where: { id },
+       data: {
+         ...rest,
+         ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
+         ...(dateOfJoining && { dateOfJoining: new Date(dateOfJoining) }),
+       },
+     });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === PrismaErrorCode.UNIQUE_CONSTRAINT) {
+          throw new ConflictException('Phone number already in use');
+        }
+      }
+      throw error;
+    }
+  }
+
+  async remove(id: string) {
+    const existing = await this.prisma.employee.findUnique({ where: { id } });
+
+    if (!existing) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.employee.delete({ where: { id } }),
+      this.prisma.user.delete({ where: { id: existing.userId } }),
+    ]);
+
+    return { id };
   }
 
   private generateTempPassword(): string {
