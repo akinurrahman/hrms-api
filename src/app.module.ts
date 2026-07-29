@@ -12,6 +12,7 @@ import { RolesGuard } from './auth/guards/roles.guard.js';
 import { EmployeeModule } from './employee/employee.module.js';
 import { UserModule } from './user/user.module.js';
 import { FamilyInfoModule } from './family-info/family-info.module.js';
+import { GovtIdsModule } from './govt-ids/govt-ids.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FamilyInfoModule } from './family-info/family-info.module.js';
     EmployeeModule,
     UserModule,
     FamilyInfoModule,
+    GovtIdsModule,
   ],
   controllers: [AppController],
   providers: [
