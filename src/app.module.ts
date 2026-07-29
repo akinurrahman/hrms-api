@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { EmployeeModule } from './employee/employee.module.js';
 import { UserModule } from './user/user.module.js';
+import { FamilyInfoModule } from './family-info/family-info.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UserModule } from './user/user.module.js';
     DesignationModule,
     EmployeeModule,
     UserModule,
+    FamilyInfoModule,
   ],
   controllers: [AppController],
   providers: [

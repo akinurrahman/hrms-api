@@ -6,6 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/enums.js';
 import { ResponseMessage } from '../common/index.js';
 import { FindEmployeeDto } from './dto/find-employee.dto.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 
 @Controller('employees')
 export class EmployeeController {
@@ -22,6 +23,13 @@ export class EmployeeController {
   @Get()
   findAll(@Query() query: FindEmployeeDto) {
     return this.employeeService.findAll(query);
+  }
+
+  @Roles(Role.EMPLOYEE, Role.SITE_ADMIN)
+  @ResponseMessage('Profile fetched successfully!')
+  @Get('me')
+  findMe(@CurrentUser() user:Express.User) {
+    return this.employeeService.findOne(user.sub);
   }
 
   @Roles(Role.SITE_ADMIN)
