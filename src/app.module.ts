@@ -13,6 +13,7 @@ import { EmployeeModule } from './employee/employee.module.js';
 import { UserModule } from './user/user.module.js';
 import { FamilyInfoModule } from './family-info/family-info.module.js';
 import { GovtIdsModule } from './govt-ids/govt-ids.module.js';
+import { BankDetailsModule } from './bank-details/bank-details.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { GovtIdsModule } from './govt-ids/govt-ids.module.js';
     UserModule,
     FamilyInfoModule,
     GovtIdsModule,
+    BankDetailsModule,
   ],
   controllers: [AppController],
   providers: [

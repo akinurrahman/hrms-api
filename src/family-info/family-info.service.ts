@@ -15,7 +15,7 @@ export class FamilyInfoService {
       throw new NotFoundException('Employee not found');
     }
 
-    return this.prisma.familyInfo.upsert({
+    return await this.prisma.familyInfo.upsert({
       where: { employeeId },
       create: { ...dto, employeeId },
       update: { ...dto },

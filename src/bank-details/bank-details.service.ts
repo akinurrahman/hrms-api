@@ -3,26 +3,26 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UpsertGovtIdDto } from './dto/upsert-govt-id.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { PrismaErrorCode } from '../common/index.js';
+import { UpsertBankDetailsDto } from './dto/upsert-bank-detail.dto.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { PrismaErrorCode } from '../common/index.js';
 
 @Injectable()
-export class GovtIdsService {
+export class BankDetailsService {
   constructor(private prisma: PrismaService) {}
 
-  async upsert(employeeId: string, dto: UpsertGovtIdDto) {
+  async upsert(employeeId: string, dto: UpsertBankDetailsDto) {
     const employee = await this.prisma.employee.findUnique({
       where: { id: employeeId },
     });
 
     if (!employee) {
-      throw new NotFoundException('No employee found');
+      throw new NotFoundException('Employee not found');
     }
 
     try {
-      return await this.prisma.govtIds.upsert({
+      return await this.prisma.bankDetails.upsert({
         where: { employeeId },
         create: { ...dto, employeeId },
         update: { ...dto },
@@ -31,7 +31,7 @@ export class GovtIdsService {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === PrismaErrorCode.UNIQUE_CONSTRAINT) {
           throw new ConflictException(
-            'One of aadharNo, panNo, uanNo, or esicNo is already registered to another employee',
+            'This bank account is already registered to another employee',
           );
         }
       }
