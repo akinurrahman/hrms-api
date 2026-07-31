@@ -4,7 +4,7 @@ import { Roles } from '../common/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/enums.js';
 import { UpsertEducationDto } from './dto/upsert-education.dto.js';
 
-@Controller('employees/:employeeId/education')
+@Controller('employees/:employeeId/educations')
 export class EducationController {
   constructor(private readonly educationService: EducationService) {}
 

@@ -16,6 +16,7 @@ import { GovtIdsModule } from './govt-ids/govt-ids.module.js';
 import { BankDetailsModule } from './bank-details/bank-details.module.js';
 import { EmploymentHistoryModule } from './employment-history/employment-history.module.js';
 import { EducationModule } from './education/education.module.js';
+import { CertificateModule } from './certificate/certificate.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EducationModule } from './education/education.module.js';
     BankDetailsModule,
     EmploymentHistoryModule,
     EducationModule,
+    CertificateModule,
   ],
   controllers: [AppController],
   providers: [

@@ -4,7 +4,7 @@ import { Role } from '../generated/prisma/enums.js';
 import { EmploymentHistoryService } from './employment-history.service.js';
 import { UpsertEmploymentHistoryDto } from './dto/upsert-employment-history.dto.js';
 
-@Controller('employees/:employeeId/employment-history')
+@Controller('employees/:employeeId/employment-histories')
 export class EmploymentHistoryController {
   constructor(
     private readonly employmentHistoryService: EmploymentHistoryService,
