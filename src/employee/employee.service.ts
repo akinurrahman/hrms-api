@@ -127,7 +127,14 @@ export class EmployeeService {
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
-    return employee;
+
+    const { user, ...rest } = employee;
+
+    return {
+      ...rest,
+      email: user.email,
+      role: user.role,
+    };
   }
 
   async update(id: string, updateEmployeeDto: UpdateEmployeeDto) {
@@ -140,16 +147,16 @@ export class EmployeeService {
     }
 
     try {
-     const { dateOfBirth, dateOfJoining, ...rest } = updateEmployeeDto;
+      const { dateOfBirth, dateOfJoining, ...rest } = updateEmployeeDto;
 
-     return await this.prisma.employee.update({
-       where: { id },
-       data: {
-         ...rest,
-         ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
-         ...(dateOfJoining && { dateOfJoining: new Date(dateOfJoining) }),
-       },
-     });
+      return await this.prisma.employee.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
+          ...(dateOfJoining && { dateOfJoining: new Date(dateOfJoining) }),
+        },
+      });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === PrismaErrorCode.UNIQUE_CONSTRAINT) {
