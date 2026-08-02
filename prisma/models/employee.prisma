@@ -50,6 +50,7 @@ model Employee {
   educationRecords    Education[]
   certificates        Certificate[]
   documents           Document[]
+  assets              Asset[]
 }
 
 enum DesignationCategory {

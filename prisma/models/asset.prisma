@@ -1,0 +1,29 @@
+enum AssetCategory {
+  LAPTOP
+  DESKTOP
+  FURNITURE
+  VEHICLE
+  OTHER
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ASSIGNED
+  MAINTENANCE
+  RETIRED
+}
+
+model Asset {
+  id       String @id @default(uuid())
+  name     String
+  assetTag String @unique
+
+  category AssetCategory
+  status   AssetStatus   @default(AVAILABLE)
+
+  assignedToEmployeeId String?
+  assignedTo           Employee? @relation(fields: [assignedToEmployeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

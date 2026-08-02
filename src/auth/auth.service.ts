@@ -71,7 +71,12 @@ export class AuthService {
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
-    let payload: { sub: string; email: string; role: Role };
+    let payload: {
+      sub: string;
+      email: string;
+      role: Role;
+      employeeId?: string;
+    };
     try {
       payload = await this.jwtService.verifyAsync(dto.refreshToken, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
@@ -106,7 +111,13 @@ export class AuthService {
   }
 
   private async generateTokens(userId: string, email: string, role: Role) {
-    const payload = { sub: userId, email, role };
+    
+    const employee = await this.prisma.employee.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    
+    const payload = { sub: userId, email, role, employeeId: employee?.id };
 
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
