@@ -18,6 +18,7 @@ import { EmploymentHistoryModule } from './employment-history/employment-history
 import { EducationModule } from './education/education.module.js';
 import { CertificateModule } from './certificate/certificate.module.js';
 import { AssetModule } from './asset/asset.module.js';
+import { AnnouncementModule } from './announcement/announcement.module.js';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AssetModule } from './asset/asset.module.js';
     EducationModule,
     CertificateModule,
     AssetModule,
+    AnnouncementModule,
   ],
   controllers: [AppController],
   providers: [
