@@ -19,6 +19,7 @@ import { EducationModule } from './education/education.module.js';
 import { CertificateModule } from './certificate/certificate.module.js';
 import { AssetModule } from './asset/asset.module.js';
 import { AnnouncementModule } from './announcement/announcement.module.js';
+import { AttendanceModule } from './attendance/attendance.module.js';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { AnnouncementModule } from './announcement/announcement.module.js';
     CertificateModule,
     AssetModule,
     AnnouncementModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [
