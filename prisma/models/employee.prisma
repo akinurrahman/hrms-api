@@ -52,7 +52,6 @@ model Employee {
   documents           Document[]
   assets              Asset[]
   announcements       Announcement[]
-  attendances         Attendance[]
 }
 
 enum DesignationCategory {

@@ -1,13 +1,12 @@
 model User {
-  id          String         @id @default(uuid())
-  email       String         @unique
-  password    String
-  tokens      RefreshToken[]
-  role        Role           @default(EMPLOYEE)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  employee    Employee?
-  attendances Attendance[]
+  id        String         @id @default(uuid())
+  email     String         @unique
+  password  String
+  tokens    RefreshToken[]
+  role      Role           @default(EMPLOYEE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  employee  Employee?
 }
 
 enum Role {

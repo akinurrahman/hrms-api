@@ -3,11 +3,7 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "extensionsToTreatAsEsm": [".ts"],
   "transform": {
-    "^.+\\.(t|j)s$": ["ts-jest", { "useESM": true }]
-  },
-  "moduleNameMapper": {
-    "^(\\.{1,2}/.*)\\.js$": "$1"
+    "^.+\\.(t|j)s$": "ts-jest"
   }
 }
