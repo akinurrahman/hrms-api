@@ -15,6 +15,7 @@ import {
   buildPaginatedResponse,
   getPaginationParams,
 } from '../common/utils/paginate.js';
+import { employeeEligibleOn } from '../common/utils/employee-eligibility.js';
 
 type PrismaTransactionClient = Prisma.TransactionClient;
 
@@ -71,12 +72,22 @@ export class EmployeeService {
   }
 
   async findAll(query: FindEmployeeDto) {
-    const { search, page, limit, designationId, employeeType, gender } = query;
+    const {
+      search,
+      page,
+      limit,
+      designationId,
+      employeeType,
+      gender,
+      activeOn,
+      isActive,
+    } = query;
 
     const where: Prisma.EmployeeWhereInput = {
       ...(designationId && { designationId }),
       ...(gender && { gender }),
       ...(employeeType && { employeeType }),
+      ...(isActive !== undefined && { isActive }),
       ...(search && {
         OR: [
           { fullName: { contains: search, mode: 'insensitive' } },
@@ -84,6 +95,8 @@ export class EmployeeService {
           { user: { email: { contains: search, mode: 'insensitive' } } },
         ],
       }),
+      // AND, not spread — employeeEligibleOn carries its own OR
+      ...(activeOn && { AND: [employeeEligibleOn(new Date(activeOn))] }),
     };
 
     const { take, skip } = getPaginationParams({ page, limit });
@@ -120,6 +133,7 @@ export class EmployeeService {
         employmentHistories: true,
         familyInfo: true,
         govtIds: true,
+        exit: { include: { documents: true } },
         user: { select: { email: true, id: true, role: true } },
       },
     });

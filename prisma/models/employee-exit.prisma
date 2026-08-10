@@ -1,0 +1,66 @@
+enum ExitType {
+  RESIGNATION 
+  TERMINATION 
+  DISMISSAL 
+  RETIREMENT
+  END_OF_CONTRACT
+  ABSCONDING
+  DEATH
+  OTHER
+}
+
+enum ExitDocumentType {
+  RESIGNATION_LETTER
+  TERMINATION_LETTER
+  RELIEVING_LETTER
+  EXPERIENCE_LETTER
+  FULL_AND_FINAL_SETTLEMENT
+  DEATH_CERTIFICATE
+  HANDOVER_CHECKLIST
+  OTHER
+}
+
+model EmployeeExit {
+  id         String   @id @default(uuid())
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  exitType ExitType
+  reason   String?
+  notes    String?
+
+  /// Date the resignation was submitted — distinct from the last working day.
+  /// Null for employer-initiated and involuntary exits.
+  resignationDate  DateTime? @db.Date
+  noticePeriodDays Int?
+
+  isRehireEligible Boolean @default(true)
+  rehireRemark     String?
+
+  /// Nullable with SetNull: deleting the admin's user account must not block
+  /// the delete (RESTRICT) nor destroy the exit record (Cascade).
+  processedById String?
+  processedBy   User?   @relation(fields: [processedById], references: [id], onDelete: SetNull)
+
+  documents ExitDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ExitDocument {
+  id     String       @id @default(uuid())
+  exitId String
+  exit   EmployeeExit @relation(fields: [exitId], references: [id], onDelete: Cascade)
+
+  type       ExitDocumentType
+  customName String? // required when type = OTHER
+
+  /// Opaque storage key (Cloudinary public_id / S3 object key), not a URL.
+  /// Deliberately unvalidated until the upload pipeline exists.
+  fileKey  String
+  fileName String? // original filename, for display only
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,4 +1,5 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { EmployeeType, Gender } from '../../generated/prisma/enums.js';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
 
@@ -18,4 +19,18 @@ export class FindEmployeeDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(Gender)
   gender?: Gender;
+
+  /** Who was on rolls on this date — joined by then, not yet past their last working day. */
+  @IsOptional()
+  @IsDateString()
+  activeOn?: string;
+
+  @IsOptional()
+  @Transform(({ value }): unknown => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
+  @IsBoolean()
+  isActive?: boolean;
 }

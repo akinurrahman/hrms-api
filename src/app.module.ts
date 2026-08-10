@@ -19,6 +19,7 @@ import { EducationModule } from './education/education.module.js';
 import { CertificateModule } from './certificate/certificate.module.js';
 import { AssetModule } from './asset/asset.module.js';
 import { AnnouncementModule } from './announcement/announcement.module.js';
+import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { AnnouncementModule } from './announcement/announcement.module.js';
     AuthModule,
     DesignationModule,
     EmployeeModule,
+    EmployeeExitModule,
     UserModule,
     FamilyInfoModule,
     GovtIdsModule,
