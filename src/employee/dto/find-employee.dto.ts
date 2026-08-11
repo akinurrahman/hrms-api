@@ -1,7 +1,8 @@
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { EmployeeType, Gender } from '../../generated/prisma/enums.js';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto.js';
+import { IsCalendarDate } from '../../common/validators/is-calendar-date.decorator.js';
 
 export class FindEmployeeDto extends PaginationQueryDto {
   @IsOptional()
@@ -22,7 +23,7 @@ export class FindEmployeeDto extends PaginationQueryDto {
 
   /** Who was on rolls on this date — joined by then, not yet past their last working day. */
   @IsOptional()
-  @IsDateString()
+  @IsCalendarDate()
   activeOn?: string;
 
   @IsOptional()

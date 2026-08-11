@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsEmail,
   IsEnum,
   IsNotEmpty,
@@ -9,6 +8,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { EmployeeType, Gender } from '../../generated/prisma/client.js';
+import { IsCalendarDate } from '../../common/validators/is-calendar-date.decorator.js';
 
 export class CreateEmployeeDto {
   // -- user field --
@@ -29,7 +29,7 @@ export class CreateEmployeeDto {
   @IsString()
   alternateNumber!: string;
 
-  @IsDateString()
+  @IsCalendarDate()
   dateOfBirth!: string;
 
   @IsEnum(Gender)
@@ -42,7 +42,8 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   designationId!: string;
 
-  @IsDateString()
+  /** Feeds `employeeEligibleOn()`, so a day of drift here shifts every roster and summary. */
+  @IsCalendarDate()
   dateOfJoining!: string;
 
   @IsOptional()

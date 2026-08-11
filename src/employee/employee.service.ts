@@ -17,6 +17,7 @@ import {
   getPaginationParams,
 } from '../common/utils/paginate.js';
 import { employeeEligibleOn } from '../common/utils/employee-eligibility.js';
+import { toUtcDateOnly } from '../common/utils/date.js';
 
 type PrismaTransactionClient = Prisma.TransactionClient;
 
@@ -51,8 +52,8 @@ export class EmployeeService {
               ...employeeFields,
               userId: user.id,
               employeeId,
-              dateOfBirth: new Date(employeeFields.dateOfBirth),
-              dateOfJoining: new Date(employeeFields.dateOfJoining),
+              dateOfBirth: toUtcDateOnly(employeeFields.dateOfBirth),
+              dateOfJoining: toUtcDateOnly(employeeFields.dateOfJoining),
             },
           });
           return employee;
@@ -101,7 +102,7 @@ export class EmployeeService {
         ],
       }),
       // AND, not spread — employeeEligibleOn carries its own OR
-      ...(activeOn && { AND: [employeeEligibleOn(new Date(activeOn))] }),
+      ...(activeOn && { AND: [employeeEligibleOn(toUtcDateOnly(activeOn))] }),
     };
 
     const { take, skip } = getPaginationParams({ page, limit });
@@ -172,8 +173,8 @@ export class EmployeeService {
         where: { id },
         data: {
           ...rest,
-          ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) }),
-          ...(dateOfJoining && { dateOfJoining: new Date(dateOfJoining) }),
+          ...(dateOfBirth && { dateOfBirth: toUtcDateOnly(dateOfBirth) }),
+          ...(dateOfJoining && { dateOfJoining: toUtcDateOnly(dateOfJoining) }),
         },
       });
     } catch (error) {

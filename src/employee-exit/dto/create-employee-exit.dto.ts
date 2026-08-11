@@ -3,7 +3,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
-  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -16,12 +15,14 @@ import {
 } from 'class-validator';
 import { ExitType } from '../../generated/prisma/enums.js';
 import { ExitDocumentDto } from './exit-document.dto.js';
+import { IsCalendarDate } from '../../common/validators/is-calendar-date.decorator.js';
 
 export class CreateEmployeeExitDto {
   @IsEnum(ExitType)
   exitType!: ExitType;
 
-  @IsDateString()
+  /** Calendar date — the column is `@db.Date` and every eligibility query keys off it. */
+  @IsCalendarDate()
   lastWorkingDay!: string;
 
   /** Required when the exit type is OTHER, since the enum says nothing then. */
@@ -37,10 +38,16 @@ export class CreateEmployeeExitDto {
   @MaxLength(2000)
   notes?: string;
 
-  /** Only meaningful for voluntary exits — rejected for the rest. */
+  /**
+   * Only meaningful for voluntary exits — rejected for the rest.
+   *
+   * `null` is accepted and distinct from omission: on PATCH, omitting it keeps
+   * the stored value while sending `null` clears it. `@IsOptional()` skips
+   * validation for both, so `IsCalendarDate` never sees the null.
+   */
   @IsOptional()
-  @IsDateString()
-  resignationDate?: string;
+  @IsCalendarDate()
+  resignationDate?: string | null;
 
   @IsOptional()
   @Type(() => Number)

@@ -3,9 +3,9 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
 } from 'class-validator';
+import { IsCalendarDate } from '../../common/validators/is-calendar-date.decorator.js';
 
 export class CreateHolidayDto {
   @IsString()
@@ -14,14 +14,12 @@ export class CreateHolidayDto {
   name!: string;
 
   /**
-   * Calendar date, `YYYY-MM-DD`. Deliberately stricter than `@IsDateString()`:
-   * the column is `@db.Date`, so accepting a full timestamp would let the
-   * caller believe a time component was stored when it is thrown away, and
-   * would make an offset-bearing string land on the wrong day.
+   * Calendar date, `YYYY-MM-DD`. Stricter than `@IsDateString()` on purpose —
+   * see the note on `IsCalendarDate`. A bare regex is not enough: it lets
+   * `2026-02-30` through to `toUtcDateOnly()`, which throws a `RangeError` the
+   * exception filter does not catch.
    */
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'date must be a calendar date in YYYY-MM-DD format',
-  })
+  @IsCalendarDate()
   date!: string;
 
   @IsOptional()

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ExitType } from '../generated/prisma/enums.js';
+import { todayUtc, toUtcDateOnly } from '../common/utils/date.js';
 import { CreateEmployeeExitDto } from './dto/create-employee-exit.dto.js';
 import { UpdateEmployeeExitDto } from './dto/update-employee-exit.dto.js';
 import { ExitDocumentDto } from './dto/exit-document.dto.js';
@@ -26,14 +27,6 @@ const EXIT_INCLUDE = {
   documents: { orderBy: { createdAt: 'asc' } },
   processedBy: { select: { id: true, email: true } },
 } as const;
-
-/** UTC midnight for today, to compare against Prisma `@db.Date` values. */
-function todayUtc(): Date {
-  const now = new Date();
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-}
 
 @Injectable()
 export class EmployeeExitService {
@@ -59,9 +52,9 @@ export class EmployeeExitService {
       );
     }
 
-    const lastWorkingDay = new Date(dto.lastWorkingDay);
+    const lastWorkingDay = toUtcDateOnly(dto.lastWorkingDay);
     const resignationDate = dto.resignationDate
-      ? new Date(dto.resignationDate)
+      ? toUtcDateOnly(dto.resignationDate)
       : null;
 
     this.assertDatesValid(
@@ -127,7 +120,9 @@ export class EmployeeExitService {
   async update(employeeId: string, dto: UpdateEmployeeExitDto) {
     const existing = await this.prisma.employeeExit.findUnique({
       where: { employeeId },
-      include: { employee: { select: { dateOfJoining: true } } },
+      include: {
+        employee: { select: { dateOfJoining: true, lastWorkingDay: true } },
+      },
     });
 
     if (!existing) {
@@ -138,12 +133,18 @@ export class EmployeeExitService {
     // a type change alone can invalidate an untouched resignationDate.
     const exitType = dto.exitType ?? existing.exitType;
     const lastWorkingDay = dto.lastWorkingDay
-      ? new Date(dto.lastWorkingDay)
-      : await this.currentLastWorkingDay(employeeId);
+      ? toUtcDateOnly(dto.lastWorkingDay)
+      : this.requireLastWorkingDay(existing.employee.lastWorkingDay);
+
+    // Three-way, not two: omitted keeps the stored date, an explicit null
+    // clears it, a string replaces it. Collapsing null into the string branch
+    // sends `new Date(null)` — the epoch — through the date checks.
     const resignationDate =
       dto.resignationDate === undefined
         ? existing.resignationDate
-        : new Date(dto.resignationDate);
+        : dto.resignationDate === null
+          ? null
+          : toUtcDateOnly(dto.resignationDate);
 
     this.assertDatesValid(
       exitType,
@@ -252,19 +253,18 @@ export class EmployeeExitService {
     return { id: documentId };
   }
 
-  private async currentLastWorkingDay(employeeId: string): Promise<Date> {
-    const employee = await this.prisma.employee.findUniqueOrThrow({
-      where: { id: employeeId },
-      select: { lastWorkingDay: true },
-    });
-
-    if (!employee.lastWorkingDay) {
+  /**
+   * The two are written in one transaction, so an exit record without a last
+   * working day means the row was tampered with outside this service.
+   */
+  private requireLastWorkingDay(lastWorkingDay: Date | null): Date {
+    if (!lastWorkingDay) {
       throw new ConflictException(
         'Exit record exists but the employee has no last working day. Revoke and re-record the exit.',
       );
     }
 
-    return employee.lastWorkingDay;
+    return lastWorkingDay;
   }
 
   private assertDatesValid(
@@ -285,7 +285,7 @@ export class EmployeeExitService {
 
     if (!VOLUNTARY_EXIT_TYPES.includes(exitType)) {
       throw new BadRequestException(
-        `resignationDate applies only to ${VOLUNTARY_EXIT_TYPES.join(' and ')} exits`,
+        `resignationDate applies only to ${VOLUNTARY_EXIT_TYPES.join(' and ')} exits. Send "resignationDate": null to clear it.`,
       );
     }
 
