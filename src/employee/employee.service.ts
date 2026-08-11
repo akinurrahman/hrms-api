@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -59,13 +60,17 @@ export class EmployeeService {
         { timeout: 15000, maxWait: 10000 },
       );
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === PrismaErrorCode.UNIQUE_CONSTRAINT
-      ) {
-        throw new ConflictException(
-          'A user or employee with this email or phone number already exists!',
-        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === PrismaErrorCode.UNIQUE_CONSTRAINT) {
+          throw new ConflictException(
+            'A user or employee with this email or phone number already exists!',
+          );
+        }
+        if (error.code === PrismaErrorCode.FOREIGN_KEY_CONSTRAINT) {
+          throw new BadRequestException(
+            'Unknown designationId or shiftId — the referenced record does not exist',
+          );
+        }
       }
       throw error;
     }
@@ -175,6 +180,11 @@ export class EmployeeService {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === PrismaErrorCode.UNIQUE_CONSTRAINT) {
           throw new ConflictException('Phone number already in use');
+        }
+        if (error.code === PrismaErrorCode.FOREIGN_KEY_CONSTRAINT) {
+          throw new BadRequestException(
+            'Unknown designationId or shiftId — the referenced record does not exist',
+          );
         }
       }
       throw error;

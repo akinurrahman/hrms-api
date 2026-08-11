@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 import { EmployeeType, Gender } from '../../generated/prisma/client.js';
@@ -43,6 +44,10 @@ export class CreateEmployeeDto {
 
   @IsDateString()
   dateOfJoining!: string;
+
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
 
   // -- communication address --
   @IsString()

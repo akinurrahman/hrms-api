@@ -20,6 +20,7 @@ import { CertificateModule } from './certificate/certificate.module.js';
 import { AssetModule } from './asset/asset.module.js';
 import { AnnouncementModule } from './announcement/announcement.module.js';
 import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
+import { ShiftModule } from './shift/shift.module.js';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
     CertificateModule,
     AssetModule,
     AnnouncementModule,
+    ShiftModule,
   ],
   controllers: [AppController],
   providers: [

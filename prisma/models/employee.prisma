@@ -28,6 +28,11 @@ model Employee {
   designation   Designation  @relation(fields: [designationId], references: [id])
   dateOfJoining DateTime     @db.Date
 
+  /// Nullable: employees created before shifts existed have none, and the
+  /// close job must report them rather than assume a default shift.
+  shiftId String?
+  shift   Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
   // Exit tracking. `lastWorkingDay` is the source of truth for historical
   // date-relative queries; `isActive` is a convenience flag for "today".
   // Details of the separation live on the EmployeeExit record.

@@ -1,0 +1,26 @@
+model Shift {
+  id   String @id @default(uuid())
+  name String
+  code String @unique
+
+  /// Minutes from midnight (0-1439) — timezone-safe, never DateTime.
+  /// A shift is a night shift iff `endMinutes < startMinutes`; there is no
+  /// `isNightShift` column because the times already carry that fact.
+  startMinutes Int
+  endMinutes   Int
+  breakMinutes Int @default(0)
+
+  /// Grace lives on the shift, not on policy: a 06:00 shift needs more slack
+  /// than a 10:00 one.
+  graceMinutes Int @default(0)
+
+  /// 0 = Sunday ... 6 = Saturday
+  weeklyOffDays Int[] @default([0])
+
+  isActive Boolean @default(true)
+
+  employees Employee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
