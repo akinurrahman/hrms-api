@@ -21,6 +21,7 @@ import { AssetModule } from './asset/asset.module.js';
 import { AnnouncementModule } from './announcement/announcement.module.js';
 import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
 import { ShiftModule } from './shift/shift.module.js';
+import { HolidayModule } from './holiday/holiday.module.js';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ShiftModule } from './shift/shift.module.js';
     AssetModule,
     AnnouncementModule,
     ShiftModule,
+    HolidayModule,
   ],
   controllers: [AppController],
   providers: [
