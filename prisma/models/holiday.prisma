@@ -1,0 +1,16 @@
+model Holiday {
+  id String @id @default(uuid())
+
+  names String[]
+
+  date DateTime @db.Date
+
+  isOptional Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One declaration per calendar day. Becomes @@unique([siteId, date])
+  /// when multi-tenancy lands.
+  @@unique([date])
+}
