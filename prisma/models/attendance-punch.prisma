@@ -1,0 +1,50 @@
+enum PunchDirection {
+  IN
+  OUT
+  UNKNOWN
+}
+
+/// The append-only raw layer. Never updated in place, never deleted.
+///
+/// Biometric devices emit a stream, not a clean in/out pair: duplicates within
+/// seconds, lunch punches, bulk replays after network downtime, and devices
+/// that do not report direction at all. Storing only checkIn/checkOut would
+/// mean a bug in the derivation could never be corrected retroactively — the
+/// inputs would be gone.
+model AttendancePunch {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  punchedAt DateTime
+
+  direction PunchDirection @default(UNKNOWN)
+
+  deviceId   String @default("UNKNOWN")
+  rawPayload Json?
+
+  /// Resolved at ingest against the employee's shift, night-shift aware: a
+  /// 22:00-06:00 shift starting Jan 5 owns a 02:00 punch on Jan 6.
+  /// Null means the punch could not be attributed to any day; `ignoreReason`
+  /// says why and it surfaces for review.
+  attendanceDate DateTime? @db.Date
+
+  /// The derivation work queue. Every punch lands `false`; deriving the day
+  /// flips it.
+  isProcessed Boolean @default(false)
+
+  /// "Stored, but not used to derive a day." Set at ingest for punches that
+  /// could not be resolved, and later for mid-day punches that lose to the
+  /// first-IN / last-OUT rule.
+  isIgnored    Boolean @default(false)
+  ignoreReason String?
+
+  createdAt DateTime @default(now())
+
+  /// Absorbs device replay idempotently — the whole reason ingestion needs no
+  /// read-then-write.
+  @@unique([employeeId, punchedAt, deviceId])
+  @@index([employeeId, punchedAt])
+  @@index([isProcessed])
+  @@index([attendanceDate])
+}

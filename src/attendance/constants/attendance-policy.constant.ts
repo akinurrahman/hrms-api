@@ -44,6 +44,22 @@ export interface AttendancePolicy {
    * multi-tenancy.
    */
   defaultCompensationType: HolidayCompensation;
+
+  /**
+   * How early before shift start a punch is still attributed to that shift's
+   * day, and how late after shift end.
+   *
+   * Deliberately wider than `shift.graceMinutes`, and deliberately not the
+   * same setting: grace decides whether somebody is *late*, this decides which
+   * *day* their punch is about. A ten-minute grace used as an ingestion
+   * bracket would orphan everyone who punched out a quarter of an hour after
+   * their shift ended.
+   *
+   * The two brackets are asymmetric because the behaviour is: people trickle
+   * in shortly before start, and trail out well after end.
+   */
+  punchWindowBeforeMinutes: number;
+  punchWindowAfterMinutes: number;
 }
 
 /**
@@ -67,4 +83,6 @@ export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
   businessUtcOffsetMinutes: 330,
   deductBreakOnlyIfDayLongEnough: true,
   defaultCompensationType: HolidayCompensation.PAID_EXTRA,
+  punchWindowBeforeMinutes: 120,
+  punchWindowAfterMinutes: 180,
 };
