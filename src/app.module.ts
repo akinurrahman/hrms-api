@@ -22,6 +22,7 @@ import { AnnouncementModule } from './announcement/announcement.module.js';
 import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
 import { ShiftModule } from './shift/shift.module.js';
 import { HolidayModule } from './holiday/holiday.module.js';
+import { AttendanceModule } from './attendance/attendance.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { HolidayModule } from './holiday/holiday.module.js';
     AnnouncementModule,
     ShiftModule,
     HolidayModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [
