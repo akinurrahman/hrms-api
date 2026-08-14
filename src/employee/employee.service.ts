@@ -210,26 +210,37 @@ export class EmployeeService {
     return randomBytes(9).toString('base64url');
   }
 
+  /**
+   * Next free code in the `WFM-EMP-` series.
+   *
+   * Scoped to that prefix, because other series exist — `WFM-ADMIN-01` is not
+   * employee number one, and treating it as such hands the next hire a code
+   * that is already taken.
+   *
+   * The highest number wins, not the newest row. Creation order and numbering
+   * order are not the same thing: seed an admin after two employees, or
+   * backfill a record, and "most recent" points at the wrong code.
+   *
+   * Known limitation: two creates racing here can read the same maximum and
+   * collide. Both fail loudly on the unique constraint rather than sharing a
+   * code, so nothing is corrupted — but the real fix is a database sequence,
+   * and that is worth doing before bulk onboarding.
+   */
   private async generateEmployeeId(
     tx: PrismaTransactionClient,
   ): Promise<string> {
-    const PREFIX = 'WFM';
+    const PREFIX = 'WFM-EMP-';
 
-    const lastEmployee = await tx.employee.findFirst({
-      orderBy: { createdAt: 'desc' },
+    const existing = await tx.employee.findMany({
+      where: { employeeId: { startsWith: PREFIX } },
       select: { employeeId: true },
     });
 
-    let nextNumber = 1;
-    if (lastEmployee) {
-      const lastNumber = parseInt(
-        lastEmployee.employeeId.split('-').pop() ?? '0',
-        10,
-      );
-      nextNumber = lastNumber + 1;
-    }
+    const highest = existing.reduce((max, { employeeId }) => {
+      const parsed = Number.parseInt(employeeId.slice(PREFIX.length), 10);
+      return Number.isNaN(parsed) ? max : Math.max(max, parsed);
+    }, 0);
 
-    const paddedNumber = String(nextNumber).padStart(2, '0');
-    return `${PREFIX}-EMP-${paddedNumber}`;
+    return `${PREFIX}${String(highest + 1).padStart(2, '0')}`;
   }
 }
