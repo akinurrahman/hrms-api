@@ -1,0 +1,93 @@
+/// A property of the calendar and the employee's roster, not of what they did.
+enum DayType {
+  WORKING
+  WEEKLY_OFF
+  HOLIDAY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  HALF_DAY
+  ABSENT
+  ON_LEAVE
+  NOT_APPLICABLE
+  MISSING_CHECKOUT
+}
+
+/// Precedence: SYSTEM < DEVICE < MANUAL. A write never loses to a lower rank.
+enum AttendanceSource {
+  SYSTEM
+  DEVICE
+  MANUAL
+}
+
+/// How holiday or weekly-off work gets compensated. Attendance records which
+/// route was taken; payroll decides the rate. Cash and comp-off are mutually
+/// exclusive and nothing downstream can tell them apart afterwards.
+enum HolidayCompensation {
+  PAID_EXTRA
+  COMP_OFF
+}
+
+/// A row existing means "this day has been decided". Nothing pre-creates blank
+/// rows — the roster computes display state for days that have no row, so the
+/// three states HR needs to tell apart (not marked / marked by device / marked
+/// by HR) stay distinguishable.
+model Attendance {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  /// Distinct from `checkIn` on purpose: a 22:00-06:00 shift starting Jan 5
+  /// belongs to Jan 5, so this cannot be derived from the check-in instant.
+  attendanceDate DateTime @db.Date
+
+  /// Denormalised deliberately. The employee's assigned shift can change; this
+  /// row must remember which shift the day was actually judged against, or a
+  /// later recomputation produces a different answer for the same day.
+  shiftId String?
+  shift   Shift?  @relation(fields: [shiftId], references: [id])
+
+  dayType DayType
+  status  AttendanceStatus
+  source  AttendanceSource
+
+  checkIn  DateTime?
+  checkOut DateTime?
+
+  workedMinutes    Int @default(0)
+  lateMinutes      Int @default(0)
+  earlyExitMinutes Int @default(0)
+  overtimeMinutes  Int @default(0)
+
+  /// Set when a lower-ranked write had something to say but was not allowed to
+  /// say it — a device punch landing on a row HR marked by hand. Nothing is
+  /// silently resolved; HR decides.
+  hasConflict  Boolean @default(false)
+  conflictNote String?
+
+  /// Set only when `dayType` is HOLIDAY/WEEKLY_OFF and `status` is
+  /// PRESENT/HALF_DAY. A holiday paid out in cash must not also accrue a
+  /// comp-off, and nothing downstream can tell the two apart after the fact.
+  compensationType HolidayCompensation?
+
+  /// Required at DTO level whenever `source` becomes MANUAL — not enforceable
+  /// in the DB, since SYSTEM and DEVICE rows legitimately have none.
+  remark     String?
+  markedById String?
+
+  /// The only path from an attendance day back to a leave type, so it must be
+  /// populated on every ON_LEAVE row.
+  ///
+  /// Plain column, not a relation: `PlannedAbsence` does not exist yet. Adding
+  /// it now means the migration that introduces that model only adds a
+  /// constraint, with no backfill.
+  plannedAbsenceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate])
+  @@index([attendanceDate, status])
+}

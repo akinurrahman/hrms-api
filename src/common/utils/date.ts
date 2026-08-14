@@ -40,3 +40,19 @@ export function toUtcDateOnly(date: string | Date): Date {
 export function toDateKey(date: Date | string): string {
   return format(toUtcDateOnly(date), 'yyyy-MM-dd');
 }
+
+/**
+ * Half-open UTC bounds for a calendar year — `start` inclusive, `end` exclusive.
+ *
+ * The exclusive upper bound is what makes this safe to hand straight to a
+ * `{ gte: start, lt: end }` filter: there is no last-instant-of-December to get
+ * wrong, and a `@db.Date` column stored at UTC midnight compares cleanly.
+ * `date-fns` `startOfYear` works in local time and would shift the boundary by
+ * the host's offset.
+ */
+export function utcYearRange(year: number): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(year, 0, 1)),
+    end: new Date(Date.UTC(year + 1, 0, 1)),
+  };
+}

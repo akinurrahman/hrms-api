@@ -33,9 +33,25 @@ export const PunchIgnoreReason = {
    */
   NOT_ON_ROLLS: 'NOT_ON_ROLLS',
 
-  // MID_DAY_PUNCH joins this list with derivation, when the first-IN /
-  // last-OUT rule starts discarding the punches in between.
+  /**
+   * Lost to the first-IN / last-OUT rule — a lunch punch, or one of a device's
+   * duplicates seconds apart. Set by derivation, not by ingestion.
+   *
+   * Unlike the reasons above, this one is *provisional*. Derivation recomputes
+   * the ignore set from scratch every run, so a punch that arrives late and
+   * turns out to be earlier than the current check-in takes over and this flag
+   * comes back off. The others are ingest-layer verdicts and never reverse.
+   */
+  MID_DAY_PUNCH: 'MID_DAY_PUNCH',
 } as const;
+
+/**
+ * Reasons derivation may reverse. Punches ignored for any other reason stay out
+ * of the arithmetic permanently, so derivation must not re-read them.
+ */
+export const DERIVATION_OWNED_IGNORE_REASONS: readonly PunchIgnoreReason[] = [
+  PunchIgnoreReason.MID_DAY_PUNCH,
+];
 
 export type PunchIgnoreReason =
   (typeof PunchIgnoreReason)[keyof typeof PunchIgnoreReason];

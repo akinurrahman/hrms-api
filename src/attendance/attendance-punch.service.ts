@@ -10,6 +10,10 @@ import {
   getPaginationParams,
 } from '../common/utils/paginate.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
+import {
+  AttendanceDerivationService,
+  DerivationPair,
+} from './attendance-derivation.service.js';
 import { PunchIgnoreReason } from './constants/punch-ignore-reason.constant.js';
 import { resolvePunchDate } from './utils/resolve-punch-date.js';
 import { CreatePunchBatchDto, PunchItemDto } from './dto/create-punch.dto.js';
@@ -42,6 +46,7 @@ export class AttendancePunchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly policyService: AttendancePolicyService,
+    private readonly derivationService: AttendanceDerivationService,
   ) {}
 
   /**
@@ -57,6 +62,11 @@ export class AttendancePunchService {
    * good punches because one badge is unenrolled means the device retries the
    * whole batch forever and nothing ever lands. Rejects are reported by index
    * instead, so nothing is lost silently.
+   *
+   * Derivation runs afterwards, over the days this batch touched. It is
+   * deliberately a second step on already-committed rows: the append is the
+   * part that must not be lost, and a replayed batch that inserts nothing still
+   * re-derives, which is what makes reprocessing free.
    */
   async ingest(dto: CreatePunchBatchDto) {
     const policy = await this.policyService.get();
@@ -86,13 +96,37 @@ export class AttendancePunchService {
     // no read-then-write, no transaction. Replaying a batch is free.
     const { count } = await this.create(rows);
 
+    const derivation = await this.derivationService.deriveDays(
+      this.touchedDays(rows),
+    );
+
     return {
       received: dto.punches.length,
       inserted: count,
       duplicates: rows.length - count,
       unresolved: rows.filter((row) => row.attendanceDate === null).length,
       rejected,
+      derivation,
     };
+  }
+
+  /**
+   * The employee-days this batch has something to say about.
+   *
+   * Rows ignored at ingest are excluded — they resolved to no day, or to a day
+   * the employee was not on rolls for, and neither is a day to derive.
+   * Duplicates are left in; `deriveDays` dedupes, and four punches on one day
+   * are one derivation.
+   */
+  private touchedDays(
+    rows: Prisma.AttendancePunchCreateManyInput[],
+  ): DerivationPair[] {
+    return rows
+      .filter((row) => row.attendanceDate != null && !row.isIgnored)
+      .map((row) => ({
+        employeeId: row.employeeId,
+        attendanceDate: new Date(row.attendanceDate as Date),
+      }));
   }
 
   async findAll(query: FindPunchDto) {

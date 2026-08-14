@@ -65,6 +65,7 @@ model Employee {
   announcements       Announcement[]
   exit                EmployeeExit?
   punches             AttendancePunch[]
+  attendances         Attendance[]
 }
 
 enum DesignationCategory {

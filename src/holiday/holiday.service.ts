@@ -7,11 +7,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaErrorCode } from '../common/index.js';
-import { toDateKey, toUtcDateOnly } from '../common/utils/date.js';
+import {
+  toDateKey,
+  toUtcDateOnly,
+  utcYearRange,
+} from '../common/utils/date.js';
 import { CreateHolidayDto } from './dto/create-holiday.dto.js';
 import { UpdateHolidayDto } from './dto/update-holiday.dto.js';
 import { FindHolidayDto } from './dto/find-holiday.dto.js';
-import { addYears, startOfYear } from 'date-fns';
 
 @Injectable()
 export class HolidayService {
@@ -36,8 +39,9 @@ export class HolidayService {
   /** Whole year in one call — see the note on `FindHolidayDto` about pagination. */
   async findAll(query: FindHolidayDto) {
     const year = query.year ?? new Date().getUTCFullYear();
-    const start = startOfYear(new Date(year, 0, 1));
-    const end = addYears(start, 1);
+    // `startOfYear` works in local time; on a negative-offset host that pulls
+    // the boundary back into the previous year and drops Jan 1.
+    const { start, end } = utcYearRange(year);
 
     const data = await this.prisma.holiday.findMany({
       where: {
@@ -105,6 +109,28 @@ export class HolidayService {
     return this.prisma.holiday.findUnique({
       where: { date: this.parseDate(date) },
     });
+  }
+
+  /**
+   * The same question asked of many dates at once — derivation resolves a whole
+   * batch of employee-days, and a `findByDate` per day would be a round trip
+   * per day.
+   *
+   * Returns a `Set` of `yyyy-MM-dd` keys rather than the rows, because every
+   * caller so far only asks "is it a holiday", and a key set makes the lookup
+   * O(1) without the caller re-deriving date equality itself.
+   */
+  async findDateKeysIn(dates: (Date | string)[]): Promise<Set<string>> {
+    const parsed = dates.map((date) => this.parseDate(date));
+
+    if (parsed.length === 0) return new Set();
+
+    const holidays = await this.prisma.holiday.findMany({
+      where: { date: { in: parsed } },
+      select: { date: true },
+    });
+
+    return new Set(holidays.map((holiday) => toDateKey(holiday.date)));
   }
 
   /**
