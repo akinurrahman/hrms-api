@@ -77,12 +77,12 @@ model Attendance {
   markedById String?
 
   /// The only path from an attendance day back to a leave type, so it must be
-  /// populated on every ON_LEAVE row.
+  /// populated on every ON_LEAVE row and cleared when a day stops being one.
   ///
-  /// Plain column, not a relation: `PlannedAbsence` does not exist yet. Adding
-  /// it now means the migration that introduces that model only adds a
-  /// constraint, with no backfill.
+  /// The column predates the relation by a phase: it was added plain so that
+  /// introducing `PlannedAbsence` only had to add a constraint, with no backfill.
   plannedAbsenceId String?
+  plannedAbsence   PlannedAbsence? @relation(fields: [plannedAbsenceId], references: [id])
 
   auditLogs AttendanceAuditLog[]
 

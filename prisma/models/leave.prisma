@@ -1,0 +1,78 @@
+/// An absence stands or it does not. There is no PENDING here on purpose: this
+/// model is the leave module's stand-in, not the leave module, and a request
+/// nobody has decided yet has nothing to say to attendance.
+enum PlannedAbsenceStatus {
+  APPROVED
+  CANCELLED
+}
+
+/// A table rather than an enum, because `PAID | UNPAID | COMP_OFF` collapses EL,
+/// CL and SL into one value — a year of leave records that cannot tell you which
+/// balance to decrement, and payslips that cannot itemise.
+///
+/// Attendance itself reads exactly one field off this: `isPaid`, to split paid
+/// from unpaid leave days at lock time. Everything else is for the leave module
+/// and payroll, stated now because retrofitting it later is the expensive part.
+model LeaveType {
+  id   String @id @default(uuid())
+  code String @unique
+  name String
+
+  isPaid       Boolean
+  isEncashable Boolean @default(false)
+
+  /// Comp-off typically 60-90 days; null means it never lapses.
+  expiryDays Int?
+  /// Informational until the leave module lands and enforces it.
+  maxPerYear Float?
+
+  isActive Boolean @default(true)
+
+  plannedAbsences PlannedAbsence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// The record that authorises a leave day.
+///
+/// Deliberately minimal: no balance check, no accrual, no approval chain. Those
+/// are the leave module's job. What it does provide is the one thing attendance
+/// cannot do without — a row every ON_LEAVE day can point at, so the day can be
+/// traced back to a leave type long after the fact.
+///
+/// The name says *Planned*, but the common real case is retroactive: the
+/// employee is absent Tuesday, the close job marks ABSENT, and the leave is
+/// filed Thursday. Approval converts the rows that already exist.
+model PlannedAbsence {
+  id         String   @id @default(uuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isHalfDay Boolean  @default(false)
+
+  status PlannedAbsenceStatus @default(APPROVED)
+  reason String
+
+  /// User.id of whoever approved it. A plain column, like `markedById` on
+  /// Attendance — the FK buys nothing an application check does not.
+  approvedById String
+
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  attendances Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Overlapping approved ranges are rejected in the service: Postgres can only
+  /// express range exclusion through an exclusion constraint, which Prisma does
+  /// not model, so the check is a read-then-write inside a transaction.
+  @@index([employeeId, startDate, endDate])
+}

@@ -83,6 +83,45 @@ export function businessToday(offsetMinutes: number): Date {
 }
 
 /**
+ * Hard ceiling on `eachDateInRange`. A leave range longer than a year is a typo
+ * in the year field, and expanding it would build a list nobody meant to ask for.
+ */
+export const MAX_DATE_RANGE_DAYS = 366;
+
+/**
+ * Every calendar date from `start` to `end`, both inclusive, as UTC midnights.
+ *
+ * Inclusive at both ends because that is what a date range means to a human
+ * filing leave: the 5th to the 7th is three days off, not two.
+ *
+ * Walks by UTC calendar field rather than by adding 86,400,000ms, so it cannot
+ * drift across a DST boundary — the inputs are `@db.Date` values at UTC
+ * midnight and the outputs have to stay that way to compare against one.
+ */
+export function eachDateInRange(start: Date, end: Date): Date[] {
+  const from = toUtcDateOnly(start);
+  const to = toUtcDateOnly(end);
+
+  if (from.getTime() > to.getTime()) return [];
+
+  const dates: Date[] = [];
+  const cursor = new Date(from);
+
+  while (cursor.getTime() <= to.getTime()) {
+    if (dates.length >= MAX_DATE_RANGE_DAYS) {
+      throw new BadRequestException(
+        `Date range cannot exceed ${MAX_DATE_RANGE_DAYS} days`,
+      );
+    }
+
+    dates.push(new Date(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+/**
  * Half-open UTC bounds for a calendar year — `start` inclusive, `end` exclusive.
  *
  * The exclusive upper bound is what makes this safe to hand straight to a

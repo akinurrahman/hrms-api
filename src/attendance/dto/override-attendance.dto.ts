@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
 } from 'class-validator';
@@ -26,13 +27,27 @@ export const HH_MM = /^([01]\d|2[0-3]):([0-5]\d)$/;
  */
 export class OverrideAttendanceDto {
   /**
-   * Status mode. Only `ABSENT` is accepted today: `ON_LEAVE` needs a backing
-   * leave record to point at, and `NOT_APPLICABLE` is the close job's call once
-   * it exists. The service returns the specific reason.
+   * Status mode. `ABSENT` and `ON_LEAVE` are accepted; `ON_LEAVE` additionally
+   * requires `leaveTypeId`. `NOT_APPLICABLE` is the close job's call, and
+   * `PRESENT`/`HALF_DAY`/`MISSING_CHECKOUT` are conclusions of the arithmetic
+   * rather than assertions. The service returns the specific reason.
    */
   @IsOptional()
   @IsEnum(AttendanceStatus)
   status?: AttendanceStatus;
+
+  /**
+   * Required with `status: ON_LEAVE`, rejected with anything else.
+   *
+   * Marking leave creates the `PlannedAbsence` behind it, and that record needs
+   * a type. A leave day with no type falls into neither the paid nor the unpaid
+   * bucket at lock time and can never be reconstructed into a ledger entry
+   * afterwards, so the type is demanded at the point the day is marked rather
+   * than chased down later.
+   */
+  @IsOptional()
+  @IsUUID()
+  leaveTypeId?: string;
 
   /**
    * Time mode. Wall-clock time on the *office* clock, e.g. `09:15`.

@@ -28,6 +28,10 @@ const AUDITED_FIELDS = [
   'conflictNote',
   'remark',
   'shiftId',
+  // The link back to the record that authorised a leave day. Which absence a day
+  // was charged to is exactly the kind of thing a payroll dispute turns on, and
+  // it changes on the leave path as well as the manual one.
+  'plannedAbsenceId',
 ] as const;
 
 type AuditedField = (typeof AUDITED_FIELDS)[number];
@@ -43,6 +47,16 @@ export interface AuditEntry {
   after: AuditSnapshotSource;
   remark?: string;
 }
+
+/**
+ * Enough of a Prisma client to write the log — satisfied by both `PrismaService`
+ * and the client an interactive `$transaction` hands its callback.
+ */
+export type AuditWriteClient = {
+  attendanceAuditLog: {
+    createMany: PrismaService['attendanceAuditLog']['createMany'];
+  };
+};
 
 /**
  * The change history behind every manual attendance edit.
@@ -61,11 +75,19 @@ export interface AuditEntry {
 export class AttendanceAuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  buildLogWrites(entries: AuditEntry[]): Prisma.PrismaPromise<unknown>[] {
+  /**
+   * @param client the transaction client, when the caller already owns a
+   * transaction. Defaults to the request-scoped one, which is what the array
+   * form of `$transaction` needs.
+   */
+  buildLogWrites(
+    entries: AuditEntry[],
+    client: AuditWriteClient = this.prisma,
+  ): Prisma.PrismaPromise<unknown>[] {
     if (entries.length === 0) return [];
 
     return [
-      this.prisma.attendanceAuditLog.createMany({
+      client.attendanceAuditLog.createMany({
         data: entries.map((entry) => ({
           attendanceId: entry.attendanceId,
           changedById: entry.changedById,

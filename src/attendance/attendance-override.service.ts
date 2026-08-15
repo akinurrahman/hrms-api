@@ -15,6 +15,10 @@ import {
   AttendanceAuditService,
   type AuditEntry,
 } from './attendance-audit.service.js';
+import {
+  AttendanceLeaveService,
+  type ApprovedAbsence,
+} from './attendance-leave.service.js';
 import { AttendanceSource, AttendanceStatus } from './constants/attendance-enums.js';
 import { AttendancePolicy } from './constants/attendance-policy.constant.js';
 import { canOverwrite } from './utils/attendance-source.js';
@@ -40,15 +44,20 @@ export interface OverrideFailure {
 /**
  * Statuses HR may assert directly.
  *
- * `ON_LEAVE` is missing on purpose: every leave day must point at the record
- * that authorised it, and that record does not exist yet. `NOT_APPLICABLE`
- * belongs to the close job, which decides it from the calendar rather than from
- * an opinion. `PRESENT`, `HALF_DAY` and `MISSING_CHECKOUT` are conclusions of
- * the arithmetic — asserting them directly would let a row claim someone was
- * present with no times to show for it.
+ * `ON_LEAVE` is assertable now that a backing record can be created for it — and
+ * only on that condition. Marking leave here creates the `PlannedAbsence` behind
+ * it in the same transaction, because a leave day with nothing to point at
+ * cannot be split into paid and unpaid at lock time and cannot be turned into a
+ * ledger entry when the leave module lands.
+ *
+ * `NOT_APPLICABLE` stays out: it belongs to the close job, which decides it from
+ * the calendar rather than from an opinion. `PRESENT`, `HALF_DAY` and
+ * `MISSING_CHECKOUT` are conclusions of the arithmetic — asserting them directly
+ * would let a row claim someone was present with no times to show for it.
  */
 const ASSERTABLE_STATUSES: readonly AttendanceStatus[] = [
   AttendanceStatus.ABSENT,
+  AttendanceStatus.ON_LEAVE,
 ];
 
 const SHIFT_SELECT = {
@@ -62,6 +71,8 @@ const SHIFT_SELECT = {
 
 type OverrideShift = Prisma.ShiftGetPayload<{ select: typeof SHIFT_SELECT }>;
 
+type OverrideLeaveType = { id: string; code: string };
+
 type OverrideEmployee = {
   id: string;
   employeeId: string;
@@ -72,6 +83,18 @@ type OverrideEmployee = {
 
 type AttendanceRow = Prisma.AttendanceGetPayload<Record<string, never>>;
 
+/**
+ * The `PlannedAbsence` an ON_LEAVE entry will point at.
+ *
+ * `create` is false when an approved absence already covers the date and the row
+ * is merely being linked to it.
+ */
+interface PlannedLeave {
+  absenceId: string;
+  leaveTypeId: string;
+  create: boolean;
+}
+
 /** An entry that passed validation, with everything the write needs resolved. */
 interface PlannedWrite {
   attendanceId: string;
@@ -80,6 +103,8 @@ interface PlannedWrite {
   existing: AttendanceRow | null;
   result: ManualOverrideResult;
   remark: string;
+  /** `null` for every status other than ON_LEAVE. */
+  leave: PlannedLeave | null;
 }
 
 export interface BulkOverrideSummary {
@@ -113,6 +138,7 @@ export class AttendanceOverrideService {
     private readonly policyService: AttendancePolicyService,
     private readonly holidayService: HolidayService,
     private readonly auditService: AttendanceAuditService,
+    private readonly leaveService: AttendanceLeaveService,
   ) {}
 
   /**
@@ -168,11 +194,17 @@ export class AttendanceOverrideService {
 
     const employeeIds = entries.map((entry) => entry.employeeId);
 
-    const [employees, existingRows, holiday] = await Promise.all([
-      this.loadEmployees(employeeIds),
-      this.loadExisting(employeeIds, attendanceDate),
-      this.holidayService.findByDate(attendanceDate),
-    ]);
+    const [employees, existingRows, holiday, leaveTypes, absences] =
+      await Promise.all([
+        this.loadEmployees(employeeIds),
+        this.loadExisting(employeeIds, attendanceDate),
+        this.holidayService.findByDate(attendanceDate),
+        this.loadLeaveTypes(entries),
+        // Reuse before create: an employee already covered by an approved
+        // absence gets linked to it. Creating a second one would duplicate the
+        // authorisation, and the overlap rule would refuse it anyway.
+        this.leaveService.findApprovedForDate(employeeIds, attendanceDate),
+      ]);
 
     const shifts = await this.loadShifts(employees, existingRows);
 
@@ -186,6 +218,8 @@ export class AttendanceOverrideService {
         employee: employees.get(entry.employeeId) ?? null,
         existing: existingRows.get(entry.employeeId) ?? null,
         shifts,
+        leaveTypes,
+        absence: absences.get(entry.employeeId) ?? null,
         isHoliday: holiday !== null,
         policy,
         fail: (reason: string) =>
@@ -213,6 +247,8 @@ export class AttendanceOverrideService {
     employee: OverrideEmployee | null;
     existing: AttendanceRow | null;
     shifts: Map<string, OverrideShift>;
+    leaveTypes: Map<string, OverrideLeaveType>;
+    absence: ApprovedAbsence | null;
     isHoliday: boolean;
     policy: AttendancePolicy;
     fail: (reason: string) => void;
@@ -225,6 +261,25 @@ export class AttendanceOverrideService {
       fail(
         'Provide either a status or a check-in/check-out time, not both and not neither',
       );
+      return null;
+    }
+
+    const isLeave = entry.status === AttendanceStatus.ON_LEAVE;
+
+    // PRD §9 case 17. The type is what makes a leave day resolvable into paid or
+    // unpaid later; without it the row is a dead end.
+    if (isLeave && entry.leaveTypeId === undefined) {
+      fail('ON_LEAVE requires a leaveTypeId — a leave day must name its type');
+      return null;
+    }
+
+    if (!isLeave && entry.leaveTypeId !== undefined) {
+      fail('leaveTypeId applies only to ON_LEAVE');
+      return null;
+    }
+
+    if (entry.leaveTypeId !== undefined && !input.leaveTypes.has(entry.leaveTypeId)) {
+      fail('No such active leave type');
       return null;
     }
 
@@ -303,6 +358,35 @@ export class AttendanceOverrideService {
       existing,
       result,
       remark: entry.remark,
+      leave: this.planLeave(entry, input.absence),
+    };
+  }
+
+  /**
+   * Which absence an ON_LEAVE row will point at, creating one if none covers the
+   * date yet. Same id-up-front trick as `attendanceId`: the attendance row has to
+   * carry the foreign key in the same transaction that inserts the absence.
+   */
+  private planLeave(
+    entry: OverrideEntry,
+    absence: ApprovedAbsence | null,
+  ): PlannedLeave | null {
+    if (entry.status !== AttendanceStatus.ON_LEAVE) return null;
+
+    // Already authorised. Linking to the existing record keeps one absence per
+    // leave rather than one per day HR happens to save.
+    if (absence) {
+      return {
+        absenceId: absence.id,
+        leaveTypeId: absence.leaveType.id,
+        create: false,
+      };
+    }
+
+    return {
+      absenceId: randomUUID(),
+      leaveTypeId: entry.leaveTypeId as string,
+      create: true,
     };
   }
 
@@ -312,6 +396,30 @@ export class AttendanceOverrideService {
     actorId: string,
   ): Promise<BulkOverrideSummary> {
     const auditEntries: AuditEntry[] = [];
+
+    // Ahead of the upserts in the writes array, because the attendance rows
+    // carry the foreign key: the absence has to exist by the time they land.
+    const absenceCreates = plans
+      .filter((plan) => plan.leave?.create)
+      .map((plan) =>
+        this.prisma.plannedAbsence.create({
+          data: {
+            id: plan.leave!.absenceId,
+            employeeId: plan.employeeId,
+            leaveTypeId: plan.leave!.leaveTypeId,
+            // One day, marked on the roster. A multi-day leave is filed as a
+            // planned absence directly; this path exists for the single day HR
+            // is looking at.
+            startDate: attendanceDate,
+            endDate: attendanceDate,
+            // The remark the override already demands. Requiring a second
+            // justification for the same act would only get the first one
+            // copied into it.
+            reason: plan.remark,
+            approvedById: actorId,
+          },
+        }),
+      );
 
     const upserts = plans.map((plan) => {
       const data = {
@@ -326,6 +434,10 @@ export class AttendanceOverrideService {
         earlyExitMinutes: plan.result.earlyExitMinutes,
         overtimeMinutes: plan.result.overtimeMinutes,
         compensationType: plan.result.compensationType,
+        // Set on the way in and cleared on the way out. A day that stops being
+        // leave must stop pointing at the absence that authorised it, or the
+        // link outlives the fact it recorded.
+        plannedAbsenceId: plan.leave?.absenceId ?? null,
         remark: plan.remark,
         markedById: actorId,
         // HR editing the row *is* the human decision the flag was waiting for.
@@ -357,14 +469,12 @@ export class AttendanceOverrideService {
           attendanceDate,
           ...data,
         },
-        // `plannedAbsenceId` is absent from both branches on purpose: it belongs
-        // to the leave path, and a manual edit has no business clearing the link
-        // between a day and the absence that authorised it.
         update: data,
       });
     });
 
     const writes: Prisma.PrismaPromise<unknown>[] = [
+      ...absenceCreates,
       ...upserts,
       ...this.auditService.buildLogWrites(auditEntries),
     ];
@@ -378,7 +488,10 @@ export class AttendanceOverrideService {
       date: toDateKey(attendanceDate),
       created: plans.filter((plan) => plan.existing === null).length,
       updated: plans.filter((plan) => plan.existing !== null).length,
-      attendance: results.slice(0, upserts.length) as AttendanceRow[],
+      attendance: results.slice(
+        absenceCreates.length,
+        absenceCreates.length + upserts.length,
+      ) as AttendanceRow[],
     };
   }
 
@@ -427,10 +540,6 @@ export class AttendanceOverrideService {
   }
 
   private statusRejection(status: AttendanceStatus): string {
-    if (status === AttendanceStatus.ON_LEAVE) {
-      return 'ON_LEAVE requires a backing leave record, which this build cannot create yet';
-    }
-
     if (status === AttendanceStatus.NOT_APPLICABLE) {
       return 'NOT_APPLICABLE is derived from the calendar, not asserted';
     }
@@ -462,6 +571,30 @@ export class AttendanceOverrideService {
     return new Map<string, OverrideEmployee>(
       employees.map((employee) => [employee.id, employee]),
     );
+  }
+
+  /**
+   * The active leave types this batch actually names, so an unknown or retired
+   * id is caught with the rest of the validation rather than surfacing as a
+   * foreign-key error from inside the transaction.
+   */
+  private async loadLeaveTypes(entries: OverrideEntry[]) {
+    const ids = [
+      ...new Set(
+        entries
+          .map((entry) => entry.leaveTypeId)
+          .filter((id): id is string => id !== undefined),
+      ),
+    ];
+
+    if (ids.length === 0) return new Map<string, OverrideLeaveType>();
+
+    const leaveTypes = await this.prisma.leaveType.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: { id: true, code: true },
+    });
+
+    return new Map(leaveTypes.map((leaveType) => [leaveType.id, leaveType]));
   }
 
   private async loadExisting(employeeIds: string[], attendanceDate: Date) {

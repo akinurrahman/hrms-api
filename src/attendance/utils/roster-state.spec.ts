@@ -22,6 +22,7 @@ const resolve = (overrides: {
   weeklyOffDays?: number[] | null;
   attendance?: RosterAttendance | null;
   isFuture?: boolean;
+  hasPlannedAbsence?: boolean;
 }) =>
   resolveRosterState({
     attendanceDate: overrides.attendanceDate ?? THURSDAY,
@@ -32,6 +33,7 @@ const resolve = (overrides: {
         : overrides.weeklyOffDays,
     attendance: overrides.attendance ?? null,
     isFuture: overrides.isFuture ?? false,
+    hasPlannedAbsence: overrides.hasPlannedAbsence ?? false,
   });
 
 const row = (overrides: Partial<RosterAttendance> = {}): RosterAttendance => ({
@@ -121,6 +123,54 @@ describe('resolveRosterState', () => {
 
       expect(state.dayType).toBe(DayType.HOLIDAY);
       expect(state.noShiftAssigned).toBe(true);
+    });
+  });
+
+  describe('an approved planned absence', () => {
+    it('shows as leave without the day being decided', () => {
+      const state = resolve({ hasPlannedAbsence: true });
+
+      expect(state.status).toBe(AttendanceStatus.ON_LEAVE);
+      // The whole point: displayed, not written. Nothing has decided this day.
+      expect(state.isMarked).toBe(false);
+      expect(state.source).toBeNull();
+    });
+
+    it('loses to a stored row', () => {
+      // Approved leave, but the employee turned up and the device recorded it.
+      // The row is evidence; the leave is intent.
+      const state = resolve({
+        hasPlannedAbsence: true,
+        attendance: row({ status: AttendanceStatus.PRESENT }),
+      });
+
+      expect(state.status).toBe(AttendanceStatus.PRESENT);
+      expect(state.isMarked).toBe(true);
+    });
+
+    it('is not shown on a weekly off', () => {
+      // Nobody consumes leave for a day they were not due at work.
+      const state = resolve({
+        attendanceDate: SUNDAY,
+        hasPlannedAbsence: true,
+      });
+
+      expect(state.dayType).toBe(DayType.WEEKLY_OFF);
+      expect(state.status).toBe(ROSTER_NOT_MARKED);
+    });
+
+    it('is not shown on a declared holiday', () => {
+      const state = resolve({ isHoliday: true, hasPlannedAbsence: true });
+
+      expect(state.dayType).toBe(DayType.HOLIDAY);
+      expect(state.status).toBe(ROSTER_NOT_MARKED);
+    });
+
+    it('stays read-only on a future date', () => {
+      const state = resolve({ hasPlannedAbsence: true, isFuture: true });
+
+      expect(state.status).toBe(AttendanceStatus.ON_LEAVE);
+      expect(state.isEditable).toBe(false);
     });
   });
 

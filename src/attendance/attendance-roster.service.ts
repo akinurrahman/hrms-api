@@ -8,6 +8,7 @@ import {
   getPaginationParams,
 } from '../common/utils/paginate.js';
 import { HolidayService } from '../holiday/holiday.service.js';
+import { AttendanceLeaveService } from './attendance-leave.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
 import { FindRosterDto } from './dto/find-roster.dto.js';
 import { resolveRosterState } from './utils/roster-state.js';
@@ -40,9 +41,9 @@ type RosterAttendanceRow = Prisma.AttendanceGetPayload<Record<string, never>>;
  * collapse the first two into each other and invent ghost days for people who
  * join mid-month.
  *
- * Query shape is fixed at five, regardless of page size: employees + count, then
- * that page's attendance, its distinct shifts, and the date's holiday. No query
- * runs inside the row loop.
+ * Query shape is fixed at six, regardless of page size: employees + count, then
+ * that page's attendance, its distinct shifts, its approved leave, and the
+ * date's holiday. No query runs inside the row loop.
  */
 @Injectable()
 export class AttendanceRosterService {
@@ -50,6 +51,7 @@ export class AttendanceRosterService {
     private readonly prisma: PrismaService,
     private readonly policyService: AttendancePolicyService,
     private readonly holidayService: HolidayService,
+    private readonly leaveService: AttendanceLeaveService,
   ) {}
 
   async findRoster(query: FindRosterDto) {
@@ -93,12 +95,14 @@ export class AttendanceRosterService {
       ),
     ];
 
-    const [attendanceRows, shifts, holiday, policy] = await Promise.all([
-      this.loadAttendance(employeeIds, date),
-      this.loadShifts(shiftIds),
-      this.holidayService.findByDate(date),
-      this.policyService.get(),
-    ]);
+    const [attendanceRows, shifts, absences, holiday, policy] =
+      await Promise.all([
+        this.loadAttendance(employeeIds, date),
+        this.loadShifts(shiftIds),
+        this.leaveService.findApprovedForDate(employeeIds, date),
+        this.holidayService.findByDate(date),
+        this.policyService.get(),
+      ]);
 
     const isFuture =
       date.getTime() >
@@ -109,6 +113,7 @@ export class AttendanceRosterService {
         ? (shifts.get(employee.shiftId) ?? null)
         : null;
       const attendance = attendanceRows.get(employee.id) ?? null;
+      const plannedAbsence = absences.get(employee.id) ?? null;
 
       const state = resolveRosterState({
         attendanceDate: date,
@@ -116,6 +121,7 @@ export class AttendanceRosterService {
         weeklyOffDays: shift?.weeklyOffDays ?? null,
         attendance,
         isFuture,
+        hasPlannedAbsence: plannedAbsence !== null,
       });
 
       return {
@@ -129,6 +135,10 @@ export class AttendanceRosterService {
         // grace to run `aggregate()` when HR types a time into the screen.
         shift,
         attendance,
+        // The absence itself, not just the state it produced: the screen shows
+        // *which* leave, and a row that reads ON_LEAVE without naming the type
+        // sends HR to another screen to find out.
+        plannedAbsence,
         ...state,
       };
     });

@@ -23,6 +23,7 @@ import { EmployeeExitModule } from './employee-exit/employee-exit.module.js';
 import { ShiftModule } from './shift/shift.module.js';
 import { HolidayModule } from './holiday/holiday.module.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
+import { LeaveModule } from './leave/leave.module.js';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AttendanceModule } from './attendance/attendance.module.js';
     ShiftModule,
     HolidayModule,
     AttendanceModule,
+    LeaveModule,
   ],
   controllers: [AppController],
   providers: [

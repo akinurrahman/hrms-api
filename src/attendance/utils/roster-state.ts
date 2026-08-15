@@ -45,6 +45,15 @@ export interface ResolveRosterStateInput {
   weeklyOffDays: number[] | null;
   attendance: RosterAttendance | null;
   isFuture: boolean;
+  /**
+   * An approved `PlannedAbsence` covers this date.
+   *
+   * A boolean rather than the absence itself, because the only thing the display
+   * state depends on is whether one exists. The record is returned alongside the
+   * row so the screen can name the leave type; keeping it out of here keeps this
+   * function about one question.
+   */
+  hasPlannedAbsence: boolean;
 }
 
 export interface RosterState {
@@ -86,19 +95,26 @@ export function resolveRosterState(
     };
   }
 
+  // Without a shift the weekly-off question is unanswerable, and answering it
+  // anyway — defaulting to Sunday, say — would show a rest day the employee may
+  // not have. WORKING is the honest reading, and `noShiftAssigned` is what HR is
+  // meant to act on.
+  const dayType = resolveDayType(
+    input.attendanceDate,
+    weeklyOffDays ?? [],
+    input.isHoliday,
+  );
+
+  // An approved absence answers the day even though nothing has been written
+  // yet. Still response-only: no row is created here, so the day stays undecided
+  // (`isMarked` false) until a punch, HR, or the close job decides it. On a
+  // holiday or weekly off the leave is not shown, because the employee was not
+  // due at work and no leave is being consumed.
+  const isOnLeave = input.hasPlannedAbsence && dayType === DayType.WORKING;
+
   return {
-    // Without a shift the weekly-off question is unanswerable, and answering it
-    // anyway — defaulting to Sunday, say — would show a rest day the employee
-    // may not have. WORKING is the honest reading, and `noShiftAssigned` is what
-    // HR is meant to act on.
-    dayType: resolveDayType(
-      input.attendanceDate,
-      weeklyOffDays ?? [],
-      input.isHoliday,
-    ),
-    // Phase 8 slots in above this line: an approved `PlannedAbsence` covering
-    // the date displays as ON_LEAVE, still without writing a row.
-    status: ROSTER_NOT_MARKED,
+    dayType,
+    status: isOnLeave ? AttendanceStatus.ON_LEAVE : ROSTER_NOT_MARKED,
     isMarked: false,
     source: null,
     hasConflict: false,

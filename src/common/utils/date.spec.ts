@@ -1,4 +1,10 @@
-import { toDateKey, toUtcDateOnly, utcYearRange } from './date.js';
+import { BadRequestException } from '@nestjs/common';
+import {
+  eachDateInRange,
+  toDateKey,
+  toUtcDateOnly,
+  utcYearRange,
+} from './date.js';
 
 describe('date-only helpers', () => {
   describe('toUtcDateOnly', () => {
@@ -62,6 +68,64 @@ describe('date-only helpers', () => {
 
     it('zero-pads single-digit months and days', () => {
       expect(toDateKey('2026-01-05')).toBe('2026-01-05');
+    });
+  });
+
+  describe('eachDateInRange', () => {
+    const keys = (from: string, to: string) =>
+      eachDateInRange(toUtcDateOnly(from), toUtcDateOnly(to)).map(toDateKey);
+
+    it('includes both ends', () => {
+      // The 5th to the 7th is three days of leave, not two.
+      expect(keys('2026-08-05', '2026-08-07')).toEqual([
+        '2026-08-05',
+        '2026-08-06',
+        '2026-08-07',
+      ]);
+    });
+
+    it('returns the single day when the bounds are equal', () => {
+      expect(keys('2026-08-05', '2026-08-05')).toEqual(['2026-08-05']);
+    });
+
+    it('returns nothing when the range runs backwards', () => {
+      expect(keys('2026-08-07', '2026-08-05')).toEqual([]);
+    });
+
+    it('crosses a month boundary', () => {
+      expect(keys('2026-01-30', '2026-02-02')).toEqual([
+        '2026-01-30',
+        '2026-01-31',
+        '2026-02-01',
+        '2026-02-02',
+      ]);
+    });
+
+    it('crosses a leap day', () => {
+      expect(keys('2028-02-28', '2028-03-01')).toEqual([
+        '2028-02-28',
+        '2028-02-29',
+        '2028-03-01',
+      ]);
+    });
+
+    it('yields UTC midnights, the shape a @db.Date column compares against', () => {
+      const [first] = eachDateInRange(
+        toUtcDateOnly('2026-08-05'),
+        toUtcDateOnly('2026-08-05'),
+      );
+
+      expect(first.toISOString()).toBe('2026-08-05T00:00:00.000Z');
+    });
+
+    it('refuses a range longer than a year', () => {
+      // A range this long is a typo in the year field, not a request.
+      expect(() =>
+        eachDateInRange(
+          toUtcDateOnly('2026-01-01'),
+          toUtcDateOnly('2027-06-01'),
+        ),
+      ).toThrow(BadRequestException);
     });
   });
 
