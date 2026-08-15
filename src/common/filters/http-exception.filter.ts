@@ -19,9 +19,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exceptionResponse
         : (exceptionResponse as { message: string }).message;
 
+    // Some rejections are lists, not sentences: a bulk write refused because
+    // three of its thirty entries are wrong has to say *which* three, and a
+    // message string cannot carry that usefully. Thrown as
+    // `new BadRequestException({ message, errors })`, and absent everywhere
+    // else — so nothing that does not opt in changes shape.
+    const errors =
+      typeof exceptionResponse === 'object' && exceptionResponse !== null
+        ? (exceptionResponse as { errors?: unknown }).errors
+        : undefined;
+
     response.status(status).json({
       success: false,
       message,
+      ...(errors !== undefined && { errors }),
       data: null,
     });
   }

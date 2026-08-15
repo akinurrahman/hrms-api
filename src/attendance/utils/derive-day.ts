@@ -168,7 +168,7 @@ function resolvePunches(punches: DeriveDayPunch[]): {
  * afterwards, so the field has to be populated from day one even though the
  * leave ledger that consumes it does not exist yet.
  */
-function resolveCompensation(
+export function resolveCompensation(
   dayType: DayType,
   status: AttendanceStatus,
   policy: AttendancePolicy,

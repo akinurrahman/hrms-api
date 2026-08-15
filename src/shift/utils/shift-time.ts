@@ -36,3 +36,19 @@ export function minutesToHHmm(minutes: number): string {
   const mins = minutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
+
+/**
+ * `"09:05"` -> `545`. The inverse of `minutesToHHmm`, for the times HR types
+ * into the roster.
+ *
+ * Deliberately strict: the DTO's regex has already rejected anything that is
+ * not `HH:mm`, so a bad value here is a caller bug and gets a plain `Error`
+ * rather than a friendly message it is too late to show anyone.
+ */
+export function hhmmToMinutes(value: string): number {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+
+  if (!match) throw new Error(`Not a HH:mm time: ${value}`);
+
+  return Number(match[1]) * 60 + Number(match[2]);
+}

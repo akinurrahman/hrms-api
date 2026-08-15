@@ -84,6 +84,8 @@ model Attendance {
   /// constraint, with no backfill.
   plannedAbsenceId String?
 
+  auditLogs AttendanceAuditLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

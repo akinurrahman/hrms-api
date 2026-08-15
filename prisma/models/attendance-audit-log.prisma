@@ -1,0 +1,31 @@
+/// Every manual change to an `Attendance` row, in order.
+///
+/// A single `markedById`/`updatedAt` pair on the row itself is not enough: HR
+/// edits the same record several times, and a payroll dispute three months
+/// later needs the whole sequence — who changed what, from what, and why — not
+/// merely who touched it last.
+model AttendanceAuditLog {
+  id           String     @id @default(uuid())
+  attendanceId String
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  /// `User.id`. Plain column rather than a relation, matching `markedById` on
+  /// the row it describes.
+  changedById String
+
+  /// Snapshots of the fields a manual write can touch, not whole rows — ids and
+  /// timestamps add noise and no information. `{}` means there was no row
+  /// before, so the entry reads as a creation rather than a change.
+  before Json
+  after  Json
+
+  /// The reason HR gave. Nullable because later write paths (Phase 8's leave
+  /// conversion, Phase 9's close job) may log a change they generated
+  /// themselves.
+  remark String?
+
+  changedAt DateTime @default(now())
+
+  @@index([attendanceId])
+  @@index([changedById, changedAt])
+}
