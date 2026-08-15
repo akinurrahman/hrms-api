@@ -1,6 +1,8 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AttendanceDerivationService } from './attendance-derivation.service.js';
+import { AttendanceRosterService } from './attendance-roster.service.js';
 import { DeriveAttendanceDto } from './dto/derive-attendance.dto.js';
+import { FindRosterDto } from './dto/find-roster.dto.js';
 import { ResponseMessage } from '../common/index.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/enums.js';
@@ -8,7 +10,23 @@ import { Role } from '../generated/prisma/enums.js';
 @Roles(Role.SITE_ADMIN)
 @Controller('attendance')
 export class AttendanceController {
-  constructor(private readonly derivationService: AttendanceDerivationService) {}
+  constructor(
+    private readonly derivationService: AttendanceDerivationService,
+    private readonly rosterService: AttendanceRosterService,
+  ) {}
+
+  /**
+   * One day, every employee on rolls for it.
+   *
+   * Purely a read. Days nobody has decided come back with a computed
+   * description and no `Attendance` row, which is what lets HR see the
+   * difference between "nothing happened here yet" and "this was marked".
+   */
+  @Get('roster')
+  @ResponseMessage('Roster fetched successfully!')
+  findRoster(@Query() query: FindRosterDto) {
+    return this.rosterService.findRoster(query);
+  }
 
   /**
    * Recompute attendance from punches already stored.

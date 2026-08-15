@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { format } from 'date-fns';
 
 export function toUtcDateOnly(date: string | Date): Date {
@@ -37,8 +38,48 @@ export function toUtcDateOnly(date: string | Date): Date {
   );
 }
 
+/**
+ * `toUtcDateOnly`, but for input that came off a request.
+ *
+ * A DTO regex or `@IsISO8601` accepts shapes the calendar does not — `2026-02-30`
+ * passes validation and reaches the service. Left unhandled the `RangeError`
+ * escapes `HttpExceptionFilter`, which only catches `HttpException`, and surfaces
+ * as a 500 for what is plainly bad input.
+ */
+export function parseDateOnlyOrThrow(input: Date | string): Date {
+  try {
+    return toUtcDateOnly(input);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw new BadRequestException(error.message);
+    }
+    throw error;
+  }
+}
+
 export function toDateKey(date: Date | string): string {
   return format(toUtcDateOnly(date), 'yyyy-MM-dd');
+}
+
+/**
+ * Today on the *business's* wall clock, as UTC midnight of that calendar date —
+ * the same shape a `@db.Date` column stores, so it compares directly against an
+ * `attendanceDate`.
+ *
+ * Reading the host's date instead would answer the question wrong for several
+ * hours a day: at 02:00 IST the server in UTC still calls it yesterday, and the
+ * roster would offer to edit a day HR considers the future.
+ */
+export function businessToday(offsetMinutes: number): Date {
+  const shifted = new Date(Date.now() + offsetMinutes * 60_000);
+
+  return new Date(
+    Date.UTC(
+      shifted.getUTCFullYear(),
+      shifted.getUTCMonth(),
+      shifted.getUTCDate(),
+    ),
+  );
 }
 
 /**

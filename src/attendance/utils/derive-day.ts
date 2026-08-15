@@ -99,7 +99,7 @@ export function deriveDay(input: DeriveDayInput): DeriveDayResult {
  * holiday: it is already excluded from working days either way, and calling it
  * WEEKLY_OFF would lose the fact that a holiday was declared.
  */
-function resolveDayType(
+export function resolveDayType(
   attendanceDate: Date,
   weeklyOffDays: number[],
   isHoliday: boolean,

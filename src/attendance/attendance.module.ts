@@ -5,6 +5,7 @@ import { AttendancePunchController } from './attendance-punch.controller.js';
 import { AttendancePunchService } from './attendance-punch.service.js';
 import { AttendanceController } from './attendance.controller.js';
 import { AttendanceDerivationService } from './attendance-derivation.service.js';
+import { AttendanceRosterService } from './attendance-roster.service.js';
 
 @Module({
   imports: [HolidayModule],
@@ -13,6 +14,7 @@ import { AttendanceDerivationService } from './attendance-derivation.service.js'
     AttendancePolicyService,
     AttendancePunchService,
     AttendanceDerivationService,
+    AttendanceRosterService,
   ],
   exports: [
     AttendancePolicyService,
