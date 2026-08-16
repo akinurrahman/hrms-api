@@ -8,14 +8,17 @@ import {
   Query,
 } from '@nestjs/common';
 import { AttendanceAuditService } from './attendance-audit.service.js';
+import { AttendanceCloseService } from './attendance-close.service.js';
 import { AttendanceDerivationService } from './attendance-derivation.service.js';
 import { AttendanceOverrideService } from './attendance-override.service.js';
 import { AttendanceRosterService } from './attendance-roster.service.js';
 import { BulkOverrideAttendanceDto } from './dto/bulk-override-attendance.dto.js';
+import { CloseAttendanceDto } from './dto/close-attendance.dto.js';
 import { DeriveAttendanceDto } from './dto/derive-attendance.dto.js';
 import { FindRosterDto } from './dto/find-roster.dto.js';
 import { OverrideAttendanceDto } from './dto/override-attendance.dto.js';
 import { PaginationQueryDto, ResponseMessage } from '../common/index.js';
+import { parseDateOnlyOrThrow } from '../common/utils/date.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
 import { Role } from '../generated/prisma/enums.js';
@@ -27,6 +30,7 @@ export class AttendanceController {
     private readonly derivationService: AttendanceDerivationService,
     private readonly rosterService: AttendanceRosterService,
     private readonly overrideService: AttendanceOverrideService,
+    private readonly closeService: AttendanceCloseService,
     private readonly auditService: AttendanceAuditService,
   ) {}
 
@@ -58,6 +62,28 @@ export class AttendanceController {
   @ResponseMessage('Attendance derived successfully!')
   derive(@Body() dto: DeriveAttendanceDto) {
     return this.derivationService.derive(dto);
+  }
+
+  /**
+   * Close a finished day: every employee on rolls who has no row gets one.
+   *
+   * The cron calls the same method, so this is not a debug hatch — it is the
+   * repair path for a night the scheduler was down, and the way a past date gets
+   * closed without waiting until tomorrow.
+   *
+   * Idempotent. Running it twice for the same date writes nothing the second
+   * time, which is what makes it safe to retry after a partial failure.
+   */
+  @Post('close')
+  @ResponseMessage('Attendance closed successfully!')
+  close(
+    @Query() query: CloseAttendanceDto,
+    @CurrentUser() user: Express.User,
+  ) {
+    return this.closeService.close({
+      date: parseDateOnlyOrThrow(query.date),
+      actorId: user.sub,
+    });
   }
 
   /**

@@ -41,7 +41,8 @@ export type AuditSnapshotSource = Partial<Record<AuditedField, unknown>>;
 
 export interface AuditEntry {
   attendanceId: string;
-  changedById: string;
+  /** `null` when no person triggered the change — the nightly close job. */
+  changedById: string | null;
   /** `null` when the row did not exist — the entry then reads as a creation. */
   before: AuditSnapshotSource | null;
   after: AuditSnapshotSource;

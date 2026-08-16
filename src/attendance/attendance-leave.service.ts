@@ -8,6 +8,7 @@ import {
   AuditEntry,
 } from './attendance-audit.service.js';
 import { planLeaveConversion } from './utils/leave-conversion.js';
+import { planLeaveReversion } from './utils/leave-reversion.js';
 
 /** Prisma's transaction client, for callers that own the transaction. */
 type PrismaTx = Omit<
@@ -30,6 +31,11 @@ export type ApprovedAbsence = Prisma.PlannedAbsenceGetPayload<{
 
 export interface ConversionSummary {
   converted: number;
+  conflicted: number;
+}
+
+export interface ReversionSummary {
+  reverted: number;
   conflicted: number;
 }
 
@@ -180,6 +186,88 @@ export class AttendanceLeaveService {
 
     return {
       converted: plan.converted.length,
+      conflicted: plan.conflicted.length,
+    };
+  }
+
+  /**
+   * Undo an absence that has been withdrawn, on the days it already converted.
+   *
+   * The mirror of `applyToExistingDays`, and it exists for the same reason:
+   * approval reaching backwards is only half a feature. A leave that flipped
+   * Tuesday to ON_LEAVE and is then cancelled leaves Tuesday claiming an
+   * authorisation that no longer exists, and payroll has no way to notice.
+   *
+   * Takes the caller's transaction client for the same reason too — an absence
+   * that committed as CANCELLED without its reversions is the same broken state
+   * as an approval without its conversions, just in the other direction.
+   *
+   * **It reverts to ABSENT and stops there.** PRD §6.5 also wants PRESENT where
+   * punches exist, and that is deliberately not decided here: the punch log is
+   * append-only, so the caller re-derives afterwards and DEVICE beats SYSTEM on
+   * its own. Guessing at it here would be a second implementation of
+   * `aggregate()` written from memory.
+   */
+  async revertCancelledAbsence(
+    tx: PrismaTx,
+    input: {
+      absenceId: string;
+      employeeId: string;
+      startDate: Date;
+      endDate: Date;
+      leaveCode: string;
+      actorId: string;
+    },
+  ): Promise<ReversionSummary> {
+    // Filtered on the link rather than only the dates: a row charged to this
+    // absence is this absence's to take back, and one that is not never is.
+    const rows = await tx.attendance.findMany({
+      where: {
+        employeeId: input.employeeId,
+        attendanceDate: { gte: input.startDate, lte: input.endDate },
+        plannedAbsenceId: input.absenceId,
+      },
+    });
+
+    const plan = planLeaveReversion({
+      rows,
+      absenceId: input.absenceId,
+      leaveCode: input.leaveCode,
+    });
+
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const auditEntries: AuditEntry[] = [];
+
+    for (const { attendanceId, data } of plan.reverted) {
+      await tx.attendance.update({ where: { id: attendanceId }, data });
+
+      auditEntries.push({
+        attendanceId,
+        changedById: input.actorId,
+        before: byId.get(attendanceId) ?? null,
+        after: data,
+        remark: `Reverted: covering ${input.leaveCode} was cancelled`,
+      });
+    }
+
+    for (const { attendanceId, data } of plan.conflicted) {
+      await tx.attendance.update({ where: { id: attendanceId }, data });
+
+      auditEntries.push({
+        attendanceId,
+        changedById: input.actorId,
+        before: byId.get(attendanceId) ?? null,
+        after: data,
+        remark: data.conflictNote,
+      });
+    }
+
+    for (const write of this.auditService.buildLogWrites(auditEntries, tx)) {
+      await write;
+    }
+
+    return {
+      reverted: plan.reverted.length,
       conflicted: plan.conflicted.length,
     };
   }

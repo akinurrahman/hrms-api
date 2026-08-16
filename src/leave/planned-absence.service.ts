@@ -13,6 +13,7 @@ import {
   buildPaginatedResponse,
   getPaginationParams,
 } from '../common/utils/paginate.js';
+import { AttendanceDerivationService } from '../attendance/attendance-derivation.service.js';
 import { AttendanceLeaveService } from '../attendance/attendance-leave.service.js';
 import { CancelPlannedAbsenceDto } from './dto/cancel-planned-absence.dto.js';
 import { CreatePlannedAbsenceDto } from './dto/create-planned-absence.dto.js';
@@ -41,6 +42,7 @@ export class PlannedAbsenceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly leaveService: AttendanceLeaveService,
+    private readonly derivationService: AttendanceDerivationService,
   ) {}
 
   /**
@@ -199,20 +201,37 @@ export class PlannedAbsenceService {
   }
 
   /**
-   * Withdraw an absence.
+   * Withdraw an absence, and undo the days it authorised (PRD §6.5).
    *
-   * **Attendance rows are deliberately left alone.** PRD §6.5 says a
-   * cancellation should recompute each covered day — a SYSTEM row reverting to
-   * ABSENT or PRESENT, a MANUAL one being flagged — and refuse outright if the
-   * period is locked. That is not built here: it needs the derivation service to
-   * decide what a reverted day becomes, and the period guard (Phase 10) to know
-   * when to refuse. Until then a cancelled absence can leave days still reading
-   * ON_LEAVE, and the `plannedAbsenceId` on those rows is the trail back.
+   * The mirror of `create`, and it has to be. Approval reaching backwards is
+   * only half a feature: a leave that flipped Tuesday to ON_LEAVE and is then
+   * cancelled would otherwise leave Tuesday claiming an authorisation that no
+   * longer exists, with nothing downstream able to notice.
+   *
+   * Withdraw rather than delete: attendance rows point at this record, and a
+   * cancelled leave somebody has to explain later is exactly what the history is
+   * for.
+   *
+   * Two commits on purpose. The reversion has to land with the cancellation, so
+   * it shares the transaction. The re-derive afterwards does not — it is a
+   * correction computed from the punch log, which is append-only, so it is safe
+   * to retry and safe to have not run yet.
+   *
+   * Phase 10 adds the missing clause: refuse outright when the period is LOCKED.
+   * Until then a cancellation reaches into a closed month, which is the same
+   * exposure every other write path in the module currently has.
    */
-  async cancel(id: string, dto: CancelPlannedAbsenceDto) {
+  async cancel(id: string, dto: CancelPlannedAbsenceDto, actorId: string) {
     const absence = await this.prisma.plannedAbsence.findUnique({
       where: { id },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        employeeId: true,
+        startDate: true,
+        endDate: true,
+        leaveType: { select: { code: true } },
+      },
     });
 
     if (!absence) throw new NotFoundException('Planned absence not found');
@@ -221,14 +240,48 @@ export class PlannedAbsenceService {
       throw new ConflictException('This absence is already cancelled');
     }
 
-    return this.prisma.plannedAbsence.update({
-      where: { id },
-      data: {
-        status: PlannedAbsenceStatus.CANCELLED,
-        cancelledAt: new Date(),
-        cancelReason: dto.cancelReason,
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const cancelled = await tx.plannedAbsence.update({
+          where: { id },
+          data: {
+            status: PlannedAbsenceStatus.CANCELLED,
+            cancelledAt: new Date(),
+            cancelReason: dto.cancelReason,
+          },
+          include: ABSENCE_INCLUDE,
+        });
+
+        // SYSTEM rows go back to ABSENT; days with a punch or a manual mark on
+        // them are flagged instead, because a contradiction between "the leave
+        // is withdrawn" and "the evidence says he was here" is for a human.
+        const reversion = await this.leaveService.revertCancelledAbsence(tx, {
+          absenceId: absence.id,
+          employeeId: absence.employeeId,
+          startDate: absence.startDate,
+          endDate: absence.endDate,
+          leaveCode: absence.leaveType.code,
+          actorId,
+        });
+
+        return { absence: cancelled, ...reversion };
       },
-      include: ABSENCE_INCLUDE,
-    });
+      { timeout: 15000, maxWait: 10000 },
+    );
+
+    // §6.5's "or PRESENT if punches exist", and it needs no new logic: the
+    // punches were never deleted, and SYSTEM loses to DEVICE, so a day that was
+    // actually worked corrects itself. `force` because those punches were marked
+    // processed the first time round.
+    if (result.reverted > 0) {
+      await this.derivationService.deriveRange({
+        from: absence.startDate,
+        to: absence.endDate,
+        employeeId: absence.employeeId,
+        force: true,
+      });
+    }
+
+    return result;
   }
 }

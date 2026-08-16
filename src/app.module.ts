@@ -5,6 +5,7 @@ import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { validateEnv } from './config/env.validation.js';
 import { DesignationModule } from './designation/designation.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
@@ -31,6 +32,10 @@ import { LeaveModule } from './leave/leave.module.js';
       isGlobal: true,
       validate: validateEnv,
     }),
+    // Registers the `@Cron` discovery pass. Today's only subscriber is the
+    // nightly attendance close, and it stays inert unless
+    // `ATTENDANCE_CLOSE_ENABLED` is set.
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     DesignationModule,

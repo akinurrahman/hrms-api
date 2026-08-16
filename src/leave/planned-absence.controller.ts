@@ -56,10 +56,19 @@ export class PlannedAbsenceController {
    * Withdraw, rather than delete: attendance rows point at this record, and a
    * cancelled leave that somebody has to explain later is exactly the thing the
    * history is for.
+   *
+   * Also undoes the past. Days this absence flipped to ON_LEAVE go back to
+   * ABSENT — or to PRESENT, if the punches say he was there after all — which is
+   * the response's `reverted` count. `conflicted` is the days it refused to
+   * touch because a punch or a manual mark now owns them.
    */
   @Patch(':id/cancel')
   @ResponseMessage('Planned absence cancelled successfully!')
-  cancel(@Param('id') id: string, @Body() dto: CancelPlannedAbsenceDto) {
-    return this.absenceService.cancel(id, dto);
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelPlannedAbsenceDto,
+    @CurrentUser() user: Express.User,
+  ) {
+    return this.absenceService.cancel(id, dto, user.sub);
   }
 }

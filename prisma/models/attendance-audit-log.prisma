@@ -11,7 +11,12 @@ model AttendanceAuditLog {
 
   /// `User.id`. Plain column rather than a relation, matching `markedById` on
   /// the row it describes.
-  changedById String
+  ///
+  /// Null means the system did it with nobody asking — the nightly close job
+  /// running unattended. Naming a placeholder user there would put a person's id
+  /// on a change they did not make, in a log a payroll dispute reads as
+  /// testimony.
+  changedById String?
 
   /// Snapshots of the fields a manual write can touch, not whole rows — ids and
   /// timestamps add noise and no information. `{}` means there was no row
