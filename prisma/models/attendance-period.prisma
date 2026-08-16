@@ -1,0 +1,76 @@
+/// OPEN or LOCKED, and nothing between them.
+///
+/// A period part-way through review is still open: either a write may change the
+/// month or it may not, and a third value would only invite each write path to
+/// guess which side of the line it falls on.
+enum PeriodStatus {
+  OPEN
+  LOCKED
+}
+
+/// The payroll cycle attendance is judged in, and the thing that stops it being
+/// judged twice.
+///
+/// Locking is an entity rather than a boolean per `Attendance` row. A per-row
+/// flag would have to be set across a whole month — a write that can half finish
+/// — and it could say nothing at all about a day that has no row yet, which is
+/// exactly the day a late punch lands on after payroll has run.
+///
+/// A date no period covers is OPEN. Nothing pre-creates periods, so the guard
+/// cannot start refusing every write because somebody forgot to declare next
+/// month.
+///
+/// Divergence from the PRD worth knowing about: §5.9 has periods created lazily
+/// on the first lock attempt. They are created explicitly here instead, through
+/// `POST /attendance-periods`. A lock endpoint that invents its own subject is
+/// surprising, and the boundaries are the one thing about a cycle that a human
+/// has to state.
+model AttendancePeriod {
+  id String @id @default(uuid())
+
+  /// The label, not the boundary. A 26-to-25 cycle ending 25 Aug is still
+  /// "August 2026" to everyone who reads a payslip.
+  year  Int
+  month Int
+
+  /// The source of truth for every date query, and the reason `year`/`month` is
+  /// only a label. Plenty of companies run payroll 26th to 25th; if the boundary
+  /// were implied by the label, every date lookup in the module would hardcode
+  /// the calendar-month assumption and changing it later would mean changing all
+  /// of them.
+  ///
+  /// Both bounds inclusive. The guard resolves a period by
+  /// `startDate <= date <= endDate`, never by extracting a month from the date.
+  /// Defaulted to the calendar month when the caller does not supply them.
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+
+  status PeriodStatus @default(OPEN)
+
+  /// `User.id`, plain columns rather than relations — the same call as
+  /// `markedById` on `Attendance` and `approvedById` on `PlannedAbsence`.
+  lockedById String?
+  lockedAt   DateTime?
+
+  /// Unlocking is an escape hatch, not a routine operation: real payroll carries
+  /// an adjustment into the next cycle rather than reopening a paid month. The
+  /// reason is mandatory whenever it happens, because "who reopened August, and
+  /// why" is the first question asked afterwards.
+  unlockedById String?
+  unlockedAt   DateTime?
+  unlockReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One period per label. Becomes `@@unique([siteId, year, month])` when
+  /// multi-tenancy lands, with `cycleStartDay` moving to site config.
+  ///
+  /// Overlapping *boundaries* are a separate rule and are rejected in the
+  /// service: Postgres can only express range exclusion through an exclusion
+  /// constraint, which Prisma does not model, so it is a read-then-write inside a
+  /// transaction — the same arrangement `PlannedAbsence` uses for its overlap.
+  @@unique([year, month])
+  /// Serves the guard's only query: LOCKED periods overlapping a date range.
+  @@index([startDate, endDate])
+}

@@ -1,5 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service.js';
 import { HolidayService } from '../holiday/holiday.service.js';
+import { AttendancePeriodService } from './attendance-period.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
 import {
   AttendanceDerivationService,
@@ -90,6 +91,8 @@ function makeHarness(
     punches?: ReturnType<typeof punch>[];
     existing?: ExistingRow[];
     holidays?: string[];
+    /** `yyyy-MM-dd` keys the period guard reports as locked. */
+    lockedDates?: string[];
   } = {},
 ) {
   const upsert = spy((args: UpsertArgs) => ({ op: 'upsert', args }));
@@ -129,9 +132,17 @@ function makeHarness(
     ),
   } as unknown as HolidayService;
 
+  const periodService = {
+    loadLockedDates: spy(() =>
+      Promise.resolve(new Set(overrides.lockedDates ?? [])),
+    ),
+    assertRangeOpen: spy(() => Promise.resolve()),
+  } as unknown as AttendancePeriodService;
+
   const service = new AttendanceDerivationService(
     prisma,
     new AttendancePolicyService(),
+    periodService,
     holidayService,
   );
 
@@ -354,6 +365,40 @@ describe('AttendanceDerivationService', () => {
         makeHarness({ punches: [] }),
         DerivationSkipReason.NO_PUNCHES,
       );
+    });
+
+    // Skips rather than throwing, so a device batch straddling the lock
+    // boundary still lands its open days. See the branch's comment.
+    it('refuses a day inside a locked period', async () => {
+      await expectSkip(
+        makeHarness({ lockedDates: ['2026-08-13'] }),
+        DerivationSkipReason.PERIOD_LOCKED,
+      );
+    });
+
+    it('reports the lock ahead of any other reason for that day', async () => {
+      // A locked day with nothing else right about it still reports the lock:
+      // sending somebody to assign a shift for a day nobody may write to would
+      // be an answer to a question that has not been reached yet.
+      await expectSkip(
+        makeHarness({
+          lockedDates: ['2026-08-13'],
+          employees: [{ ...EMPLOYEE, shift: null }],
+        }),
+        DerivationSkipReason.PERIOD_LOCKED,
+      );
+    });
+
+    it('leaves a locked day\'s punches unprocessed, so an unlock recovers them', async () => {
+      const harness = makeHarness({ lockedDates: ['2026-08-13'] });
+
+      const summary = await harness.service.deriveDays(derivePair);
+
+      expect(summary.derived).toBe(0);
+      // No writes at all: not the row, and not the punch flags either. Marking
+      // the punches processed would mean a later unlock needs `force`.
+      expect(harness.updateMany.calls).toHaveLength(0);
+      expect(harness.transaction.calls).toHaveLength(0);
     });
   });
 

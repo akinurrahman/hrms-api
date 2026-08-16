@@ -17,6 +17,8 @@
  *   any punch arithmetic happens.
  * - `AttendanceSource` precedence is SYSTEM < DEVICE < MANUAL. The ranking is
  *   implemented once, in `utils/attendance-source.ts`.
+ * - `PeriodStatus` is the payroll cycle's, not a day's. A day is never locked on
+ *   its own — it inherits the state of the period whose bounds contain it.
  */
 
 export {
@@ -24,4 +26,5 @@ export {
   AttendanceStatus,
   AttendanceSource,
   HolidayCompensation,
+  PeriodStatus,
 } from '../../generated/prisma/enums.js';

@@ -11,6 +11,7 @@ import { isEmployeeEligibleOn } from '../common/utils/employee-eligibility.js';
 import { hhmmToMinutes } from '../shift/utils/shift-time.js';
 import { HolidayService } from '../holiday/holiday.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
+import { AttendancePeriodService } from './attendance-period.service.js';
 import {
   AttendanceAuditService,
   type AuditEntry,
@@ -136,6 +137,7 @@ export class AttendanceOverrideService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly policyService: AttendancePolicyService,
+    private readonly periodService: AttendancePeriodService,
     private readonly holidayService: HolidayService,
     private readonly auditService: AttendanceAuditService,
     private readonly leaveService: AttendanceLeaveService,
@@ -189,7 +191,7 @@ export class AttendanceOverrideService {
   ): Promise<BulkOverrideSummary> {
     const policy = await this.policyService.get();
 
-    this.assertWritable(attendanceDate, policy);
+    await this.assertWritable(attendanceDate, policy);
     this.assertNoDuplicates(entries);
 
     const employeeIds = entries.map((entry) => entry.employeeId);
@@ -498,15 +500,19 @@ export class AttendanceOverrideService {
   // ------------------------------------------------------------------ guards
 
   /**
-   * Phase 10 slots `assertPeriodOpen(date)` in here, and this is the only place
-   * it will need to go — every write path in this service funnels through
+   * The two ways a day can be closed to a manual write, and the only place
+   * either is checked — every write path in this service funnels through
    * `apply()`.
    *
-   * Today the only closed thing is the future. Without the rule somebody marks
-   * the whole team present for next week; pre-approved absence is
-   * `PlannedAbsence`'s job (PRD §6.3).
+   * The future is closed because otherwise somebody marks the whole team present
+   * for next week; pre-approved absence is `PlannedAbsence`'s job (PRD §6.3).
+   * The past is closed once payroll has locked the period it falls in.
+   *
+   * Order matters: the future check is free, the period check is a query. Both
+   * run before `commit()` opens its transaction, which is this file's rule —
+   * rolling back is more expensive than not starting.
    */
-  private assertWritable(date: Date, policy: AttendancePolicy) {
+  private async assertWritable(date: Date, policy: AttendancePolicy) {
     const today = businessToday(policy.businessUtcOffsetMinutes);
 
     // The business's wall clock, not the host's. At 02:00 IST a UTC server
@@ -516,6 +522,8 @@ export class AttendanceOverrideService {
         `Attendance cannot be marked for a future date (${toDateKey(date)})`,
       );
     }
+
+    await this.periodService.assertPeriodOpen(date);
   }
 
   /**

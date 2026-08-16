@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { HolidayService } from '../holiday/holiday.service.js';
 import { toUtcDateOnly } from '../common/utils/date.js';
@@ -8,6 +9,7 @@ import {
   DerivationSummary,
 } from './attendance-derivation.service.js';
 import { AttendanceLeaveService } from './attendance-leave.service.js';
+import { AttendancePeriodService } from './attendance-period.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
 import {
   AttendanceSource,
@@ -102,6 +104,8 @@ function makeHarness(
     leave?: Map<string, { id: string }>;
     isHoliday?: boolean;
     chunkSize?: number;
+    /** Message the period guard refuses with, or nothing for an open period. */
+    lockedMessage?: string;
   } = {},
 ) {
   const upsert = spy((args: UpsertArgs) => ({ op: 'upsert', args }));
@@ -165,9 +169,19 @@ function makeHarness(
     deriveRange,
   } as unknown as AttendanceDerivationService;
 
+  const assertPeriodOpen = spy((_date: Date) =>
+    overrides.lockedMessage
+      ? Promise.reject(new ConflictException(overrides.lockedMessage))
+      : Promise.resolve(),
+  );
+  const periodService = {
+    assertPeriodOpen,
+  } as unknown as AttendancePeriodService;
+
   const service = new AttendanceCloseService(
     prisma,
     new AttendancePolicyService(),
+    periodService,
     holidayService,
     leaveService,
     derivationService,
@@ -182,6 +196,7 @@ function makeHarness(
     transaction,
     employeeFindMany,
     deriveRange,
+    assertPeriodOpen,
   };
 }
 
@@ -514,6 +529,27 @@ describe('AttendanceCloseService', () => {
       ).rejects.toThrow();
 
       expect(deriveRange.calls).toHaveLength(0);
+    });
+
+    it('refuses a date in a locked period', async () => {
+      const { service } = makeHarness({
+        lockedMessage: 'August 2026 is locked (2026-08-01 to 2026-08-31)',
+      });
+
+      await expect(close(service)).rejects.toThrow('August 2026 is locked');
+    });
+
+    it('refuses before it reads or derives anything', async () => {
+      // The guard sits ahead of the derive and ahead of the chunk loop: a locked
+      // date costs one query and the job does no work at all.
+      const { service, deriveRange, employeeFindMany, transaction } =
+        makeHarness({ lockedMessage: 'August 2026 is locked' });
+
+      await expect(close(service)).rejects.toThrow();
+
+      expect(deriveRange.calls).toHaveLength(0);
+      expect(employeeFindMany.calls).toHaveLength(0);
+      expect(transaction.calls).toHaveLength(0);
     });
   });
 });

@@ -67,6 +67,13 @@ export class AttendancePunchService {
    * deliberately a second step on already-committed rows: the append is the
    * part that must not be lost, and a replayed batch that inserts nothing still
    * re-derives, which is what makes reprocessing free.
+   *
+   * **No period guard here, and that is on purpose.** A punch is evidence, not a
+   * payroll input: refusing to store one because its month is locked destroys the
+   * record a dispute would be settled with, and the day a punch belongs to is
+   * itself computed, so one can land in a locked period with nobody intending it.
+   * The lock stops the derived row moving — `deriveDays` skips a locked day and
+   * reports it — not the evidence arriving.
    */
   async ingest(dto: CreatePunchBatchDto) {
     const policy = await this.policyService.get();

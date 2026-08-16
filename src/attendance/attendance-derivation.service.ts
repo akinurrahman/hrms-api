@@ -8,6 +8,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { toDateKey, toUtcDateOnly } from '../common/utils/date.js';
 import { isEmployeeEligibleOn } from '../common/utils/employee-eligibility.js';
 import { HolidayService } from '../holiday/holiday.service.js';
+import { AttendancePeriodService } from './attendance-period.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
 import { AttendanceSource } from './constants/attendance-enums.js';
 import { AttendancePolicy } from './constants/attendance-policy.constant.js';
@@ -31,6 +32,8 @@ export const DerivationSkipReason = {
   NO_SHIFT_ASSIGNED: 'NO_SHIFT_ASSIGNED',
   NOT_ON_ROLLS: 'NOT_ON_ROLLS',
   NO_PUNCHES: 'NO_PUNCHES',
+  /** The day falls in a locked payroll period. See `plan()` for why this skips. */
+  PERIOD_LOCKED: 'PERIOD_LOCKED',
 } as const;
 
 export type DerivationSkipReason =
@@ -107,6 +110,7 @@ export class AttendanceDerivationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly policyService: AttendancePolicyService,
+    private readonly periodService: AttendancePeriodService,
     private readonly holidayService: HolidayService,
   ) {}
 
@@ -120,12 +124,15 @@ export class AttendanceDerivationService {
     const employeeIds = [...new Set(unique.map((pair) => pair.employeeId))];
     const dates = this.distinctDates(unique);
 
-    const [employees, punchesByKey, existingByKey, holidayKeys] =
+    const [employees, punchesByKey, existingByKey, holidayKeys, lockedKeys] =
       await Promise.all([
         this.loadEmployees(employeeIds),
         this.loadPunches(employeeIds, dates),
         this.loadExisting(employeeIds, dates),
         this.holidayService.findDateKeysIn(dates),
+        // Fifth read, same round trip as the other four. One query for the whole
+        // batch is what keeps `plan()` synchronous — see its locked-day branch.
+        this.periodService.loadLockedDates(dates),
       ]);
 
     const plan = this.plan({
@@ -134,6 +141,7 @@ export class AttendanceDerivationService {
       punchesByKey,
       existingByKey,
       holidayKeys,
+      lockedKeys,
       policy,
     });
 
@@ -156,6 +164,13 @@ export class AttendanceDerivationService {
       throw new BadRequestException('`from` must not be later than `to`');
     }
 
+    // Throws where `deriveDays` skips, and the difference is the audience. A
+    // human named this range and is waiting on an answer; telling them every day
+    // of it was skipped answers a question they did not ask. The device feed's
+    // tolerance for a partly derivable batch is a property of the feed, not of
+    // this endpoint.
+    await this.periodService.assertRangeOpen(from, to);
+
     return this.deriveRange({
       from,
       to,
@@ -171,6 +186,12 @@ export class AttendanceDerivationService {
    * `aggregate()` or a retroactively declared holiday (PRD §9 case 15)
    * applicable to history — the punches are still there, so the answer can
    * always be recomputed.
+   *
+   * No period guard of its own, deliberately. All three callers are already
+   * covered: `derive()` above throws, `AttendanceCloseService.close()` throws
+   * before it gets here, and `PlannedAbsenceService.cancel()` throws before its
+   * transaction opens. What reaches `deriveDays` from here skips locked days
+   * anyway, so a guard at this level would only turn that skip into a refusal.
    */
   async deriveRange(range: {
     from: Date;
@@ -210,6 +231,8 @@ export class AttendanceDerivationService {
     punchesByKey: Map<string, PunchRow[]>;
     existingByKey: Map<string, ExistingRow>;
     holidayKeys: Set<string>;
+    /** `yyyy-MM-dd` keys of days sitting in a LOCKED period. */
+    lockedKeys: Set<string>;
     policy: AttendancePolicy;
   }) {
     const writes: Prisma.PrismaPromise<unknown>[] = [];
@@ -235,6 +258,30 @@ export class AttendanceDerivationService {
           attendanceDate: toDateKey(pair.attendanceDate),
           reason,
         });
+
+      // First, and ahead of every reason below it. A locked period is a fact
+      // about the day, not about this employee — reporting NO_SHIFT_ASSIGNED or
+      // NO_PUNCHES for a day nobody may write to would send somebody off to fix
+      // the wrong thing.
+      //
+      // It skips rather than throwing, which is deliberate and is the one place
+      // this module treats a lock as anything other than a refusal. A batch
+      // arrives here off a device, and a device that has been offline for a week
+      // hands over dates either side of the lock boundary in one payload. Throw,
+      // and none of the open days ever derive — on every retry, permanently.
+      // `AttendancePunchService` already made this exact call for the same
+      // reason (see its class comment on partial acceptance).
+      //
+      // Nothing is lost by skipping: the punches were committed before this ran
+      // and stay committed. The lock stops the derived row moving, not the
+      // evidence arriving. The punches are also left `isProcessed: false` on
+      // purpose — the `continue` fires before the id accumulation below — so a
+      // plain re-derive picks the day up the moment the period is unlocked,
+      // without anyone having to remember `force`.
+      if (input.lockedKeys.has(toDateKey(pair.attendanceDate))) {
+        skip(DerivationSkipReason.PERIOD_LOCKED);
+        continue;
+      }
 
       if (!employee) {
         skip(DerivationSkipReason.UNKNOWN_EMPLOYEE);

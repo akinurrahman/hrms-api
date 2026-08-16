@@ -15,6 +15,7 @@ import {
 } from '../common/utils/paginate.js';
 import { AttendanceDerivationService } from '../attendance/attendance-derivation.service.js';
 import { AttendanceLeaveService } from '../attendance/attendance-leave.service.js';
+import { AttendancePeriodService } from '../attendance/attendance-period.service.js';
 import { CancelPlannedAbsenceDto } from './dto/cancel-planned-absence.dto.js';
 import { CreatePlannedAbsenceDto } from './dto/create-planned-absence.dto.js';
 import { FindPlannedAbsenceDto } from './dto/find-planned-absence.dto.js';
@@ -43,6 +44,7 @@ export class PlannedAbsenceService {
     private readonly prisma: PrismaService,
     private readonly leaveService: AttendanceLeaveService,
     private readonly derivationService: AttendanceDerivationService,
+    private readonly periodService: AttendancePeriodService,
   ) {}
 
   /**
@@ -103,6 +105,14 @@ export class PlannedAbsenceService {
         );
       }
     }
+
+    // Before the transaction opens, not inside it. The whole range, not just the
+    // day it starts: an absence whose second half reaches into a locked month
+    // would convert days payroll has already paid against. Checking here rather
+    // than inside `applyToExistingDays` keeps the refusal with whoever owns the
+    // commit — a 409 thrown mid-transaction leaves the caller unable to tell
+    // whether its own `plannedAbsence.create` rolled back.
+    await this.periodService.assertRangeOpen(startDate, endDate);
 
     return this.prisma.$transaction(
       async (tx) => {
@@ -217,9 +227,10 @@ export class PlannedAbsenceService {
    * correction computed from the punch log, which is append-only, so it is safe
    * to retry and safe to have not run yet.
    *
-   * Phase 10 adds the missing clause: refuse outright when the period is LOCKED.
-   * Until then a cancellation reaches into a closed month, which is the same
-   * exposure every other write path in the module currently has.
+   * A cancellation covering a locked period is refused outright (PRD §6.5). The
+   * reversion is a write into a month payroll has closed, and there is no
+   * half-measure available: leaving the days ON_LEAVE while the absence says
+   * CANCELLED is the contradiction the reversion exists to prevent.
    */
   async cancel(id: string, dto: CancelPlannedAbsenceDto, actorId: string) {
     const absence = await this.prisma.plannedAbsence.findUnique({
@@ -239,6 +250,11 @@ export class PlannedAbsenceService {
     if (absence.status === PlannedAbsenceStatus.CANCELLED) {
       throw new ConflictException('This absence is already cancelled');
     }
+
+    await this.periodService.assertRangeOpen(
+      absence.startDate,
+      absence.endDate,
+    );
 
     const result = await this.prisma.$transaction(
       async (tx) => {

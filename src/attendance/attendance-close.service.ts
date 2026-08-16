@@ -14,6 +14,7 @@ import {
   DerivationSummary,
 } from './attendance-derivation.service.js';
 import { AttendanceLeaveService } from './attendance-leave.service.js';
+import { AttendancePeriodService } from './attendance-period.service.js';
 import { AttendancePolicyService } from './attendance-policy.service.js';
 import { AttendanceStatus } from './constants/attendance-enums.js';
 import { AttendancePolicy } from './constants/attendance-policy.constant.js';
@@ -87,6 +88,7 @@ export class AttendanceCloseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly policyService: AttendancePolicyService,
+    private readonly periodService: AttendancePeriodService,
     private readonly holidayService: HolidayService,
     private readonly leaveService: AttendanceLeaveService,
     private readonly derivationService: AttendanceDerivationService,
@@ -103,7 +105,7 @@ export class AttendanceCloseService {
   }): Promise<CloseSummary> {
     const policy = await this.policyService.get();
 
-    this.assertClosable(input.date, policy);
+    await this.assertClosable(input.date, policy);
 
     // Punches first, gaps second. A device that synced after ingestion's inline
     // derive leaves punches sitting unprocessed; marking those days ABSENT and
@@ -392,10 +394,17 @@ export class AttendanceCloseService {
    * screen, with a status payroll reads. The scheduler targets yesterday for
    * exactly this reason.
    *
-   * Phase 10 adds `assertPeriodOpen(date)` here — every write path in this
-   * service funnels through `close()`, so this is the only place it needs to go.
+   * A locked period is refused here too, and this is the only place it needs to
+   * be: every write path in this service funnels through `close()`. The check
+   * sits ahead of the `deriveRange` above and ahead of the chunk loop, so a
+   * locked date costs one query and the job does no work at all.
+   *
+   * It throws rather than skipping. The job runs unattended, and a scheduler that
+   * "skipped a locked day" and logged nothing actionable is indistinguishable
+   * from one that ran and found nothing to do. `AttendanceCloseScheduler` already
+   * catches and logs, so the 409 surfaces as an error line rather than a crash.
    */
-  private assertClosable(date: Date, policy: AttendancePolicy) {
+  private async assertClosable(date: Date, policy: AttendancePolicy) {
     const today = businessToday(policy.businessUtcOffsetMinutes);
 
     // The business's wall clock, not the host's. At 02:00 IST a UTC server still
@@ -405,5 +414,7 @@ export class AttendanceCloseService {
         `Attendance can only be closed for a day that has finished — ${toDateKey(date)} is not in the past`,
       );
     }
+
+    await this.periodService.assertPeriodOpen(date);
   }
 }
