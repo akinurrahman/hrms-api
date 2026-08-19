@@ -1,0 +1,90 @@
+/// Payroll's only input, written at lock time.
+///
+/// A snapshot rather than a live aggregation, for two reasons. Payroll figures
+/// have to stay stable even after history is edited — an unlock, a correction and
+/// a relock must produce a *new* set of numbers, not silently change the ones
+/// somebody already paid against. And the monthly sheet stops running a
+/// thirty-column pivot over every employee on every page load.
+///
+/// Every count here is a day count. Nothing in this model decides what a day is
+/// worth: whether a half day pays 0.5 or 1, whether an absence is loss-of-pay or
+/// eats a leave balance, whether holiday work pays double or converts to a
+/// comp-off. That is company policy and it belongs to payroll. Attendance
+/// provides counts; payroll provides meaning.
+model MonthlyAttendanceSummary {
+  id String @id @default(uuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  periodId String
+  period   AttendancePeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  /// Days the employee was on rolls *within this period* — the intersection of
+  /// the cycle with `[dateOfJoining, lastWorkingDay]`, not the length of the
+  /// cycle.
+  ///
+  /// Payroll's base formula is `salary × payableDays / eligibleDays`, so a
+  /// mid-month joiner or a mid-month exit prorates off this number. Computing it
+  /// here means payroll never has to reach back into `Employee` to do it.
+  eligibleDays Int
+
+  /// The seven buckets. Every eligible day lands in exactly one of them, and
+  /// their sum must equal `eligibleDays` — the reconciliation invariant, asserted
+  /// per employee at lock time and the check that catches almost every class of
+  /// bug in the close job's output.
+  presentDays     Int
+  halfDays        Int
+  absentDays      Int
+  paidLeaveDays   Int
+  unpaidLeaveDays Int
+  holidayCount    Int
+  weeklyOffCount  Int
+
+  /// Informational overlays, deliberately *not* buckets. A holiday somebody
+  /// worked is already counted in `holidayCount` — the day was a holiday, which
+  /// is what it was regardless of who showed up. Counting it again as a present
+  /// day would make the sum 32 in a 31-day month and pay for a day that does not
+  /// exist.
+  holidayWorkedDays   Int
+  weeklyOffWorkedDays Int
+
+  totalWorkedMinutes Int
+
+  /// Both totals are needed, and neither changes pay.
+  ///
+  /// Lateness alone misses the more common pattern: half an hour late and half an
+  /// hour early every day still clears the full-day threshold, so every day reads
+  /// PRESENT and the salary is correct by every rule the module applies. With only
+  /// lateness in the snapshot, half of what happened has no column to appear in.
+  totalLateMinutes      Int
+  totalEarlyExitMinutes Int
+
+  /// Split by the day it was earned on. Holiday and weekly-off overtime are
+  /// almost always paid at a different multiplier from normal overtime, and a
+  /// single total is unreconstructable afterwards — payroll would be forced back
+  /// into raw attendance, which is the thing this model exists to avoid. Trivial
+  /// to split here, impossible to recover later.
+  normalOvertimeMinutes    Int
+  holidayOvertimeMinutes   Int
+  weeklyOffOvertimeMinutes Int
+
+  /// Regeneration never overwrites. Unlock → edit → relock sets `isCurrent` false
+  /// on what exists and inserts `version + 1`; payroll reads `isCurrent`, and a
+  /// dispute reads the history. Overwriting in place would silently change
+  /// numbers that may already have been paid against, with nothing to compare.
+  version   Int     @default(1)
+  isCurrent Boolean @default(true)
+
+  generatedAt   DateTime @default(now())
+  /// `User.id`, a plain column — the same call as `lockedById` on
+  /// `AttendancePeriod` and `markedById` on `Attendance`.
+  generatedById String?
+
+  /// The version is part of the key, which is what makes regeneration an insert
+  /// rather than an update, and what stops two concurrent locks both writing
+  /// version 2.
+  @@unique([employeeId, periodId, version])
+  /// Serves payroll's only query: this period's current rows.
+  @@index([periodId, isCurrent])
+}

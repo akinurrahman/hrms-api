@@ -18,6 +18,26 @@ export function employeeEligibleOn(date: Date): Prisma.EmployeeWhereInput {
 }
 
 /**
+ * "Who was on rolls for any part of `[from, to]`" — the period-shaped question,
+ * asked by the monthly sheet and by the month lock.
+ *
+ * `employeeEligibleOn(from)` is not the same question and would be the wrong
+ * one: it silently drops the mid-month joiner, who is exactly the employee whose
+ * `eligibleDays` payroll has to prorate against.
+ *
+ * Same composition rule as above — compose with `AND`, do not spread.
+ */
+export function employeeEligibleInRange(
+  from: Date,
+  to: Date,
+): Prisma.EmployeeWhereInput {
+  return {
+    dateOfJoining: { lte: to },
+    OR: [{ lastWorkingDay: null }, { lastWorkingDay: { gte: from } }],
+  };
+}
+
+/**
  * The same predicate, answered in memory.
  *
  * Batch work — punch ingestion, the close job — loads a set of employees once

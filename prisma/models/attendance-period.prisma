@@ -60,6 +60,10 @@ model AttendancePeriod {
   unlockedAt   DateTime?
   unlockReason String?
 
+  /// What locking produces. Cascaded on delete: a summary is a statement about a
+  /// cycle, and it means nothing once the cycle it was generated for is gone.
+  summaries MonthlyAttendanceSummary[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

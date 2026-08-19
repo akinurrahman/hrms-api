@@ -10,6 +10,8 @@ import { AttendanceAuditService } from './attendance-audit.service.js';
 import { AttendanceCloseScheduler } from './attendance-close.scheduler.js';
 import { AttendanceCloseService } from './attendance-close.service.js';
 import { AttendanceLeaveService } from './attendance-leave.service.js';
+import { AttendanceLockService } from './attendance-lock.service.js';
+import { AttendanceMonthlyService } from './attendance-monthly.service.js';
 import { AttendanceOverrideService } from './attendance-override.service.js';
 import { AttendancePeriodController } from './attendance-period.controller.js';
 import { AttendancePeriodService } from './attendance-period.service.js';
@@ -33,6 +35,11 @@ import { AttendancePeriodService } from './attendance-period.service.js';
     AttendanceLeaveService,
     AttendanceOverrideService,
     AttendanceCloseService,
+    // The month-end pair. Not exported: the sheet is read over HTTP and the
+    // lock is the last word on a cycle, so nothing inside the codebase has any
+    // business calling either of them.
+    AttendanceMonthlyService,
+    AttendanceLockService,
     // Not exported: nothing calls a scheduler, it calls things. Registering it
     // as a provider is what makes `@Cron` discover it.
     AttendanceCloseScheduler,

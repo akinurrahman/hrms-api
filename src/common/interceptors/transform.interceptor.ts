@@ -11,6 +11,13 @@ import { map } from 'rxjs/operators';
 interface PaginatedResult<T> {
   data: T[];
   pagination: Record<string, unknown>;
+  /**
+   * `buildPaginatedResponse`'s optional extra, for a page that has something to
+   * say about the whole set rather than about its rows — the monthly sheet's
+   * cycle, for instance. Forwarded only when present, so nothing that does not
+   * supply it changes shape.
+   */
+  stats?: Record<string, unknown>;
 }
 
 function isPaginatedResult(value: unknown): value is PaginatedResult<unknown> {
@@ -39,6 +46,7 @@ export class TransformInterceptor implements NestInterceptor {
             message,
             data: result.data,
             pagination: result.pagination,
+            ...(result.stats !== undefined && { stats: result.stats }),
           };
         }
 

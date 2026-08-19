@@ -67,6 +67,7 @@ model Employee {
   punches             AttendancePunch[]
   attendances         Attendance[]
   plannedAbsences     PlannedAbsence[]
+  monthlySummaries    MonthlyAttendanceSummary[]
 }
 
 enum DesignationCategory {

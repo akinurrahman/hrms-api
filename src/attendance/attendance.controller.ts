@@ -10,11 +10,13 @@ import {
 import { AttendanceAuditService } from './attendance-audit.service.js';
 import { AttendanceCloseService } from './attendance-close.service.js';
 import { AttendanceDerivationService } from './attendance-derivation.service.js';
+import { AttendanceMonthlyService } from './attendance-monthly.service.js';
 import { AttendanceOverrideService } from './attendance-override.service.js';
 import { AttendanceRosterService } from './attendance-roster.service.js';
 import { BulkOverrideAttendanceDto } from './dto/bulk-override-attendance.dto.js';
 import { CloseAttendanceDto } from './dto/close-attendance.dto.js';
 import { DeriveAttendanceDto } from './dto/derive-attendance.dto.js';
+import { FindMonthlyDto } from './dto/find-monthly.dto.js';
 import { FindRosterDto } from './dto/find-roster.dto.js';
 import { OverrideAttendanceDto } from './dto/override-attendance.dto.js';
 import { PaginationQueryDto, ResponseMessage } from '../common/index.js';
@@ -29,6 +31,7 @@ export class AttendanceController {
   constructor(
     private readonly derivationService: AttendanceDerivationService,
     private readonly rosterService: AttendanceRosterService,
+    private readonly monthlyService: AttendanceMonthlyService,
     private readonly overrideService: AttendanceOverrideService,
     private readonly closeService: AttendanceCloseService,
     private readonly auditService: AttendanceAuditService,
@@ -45,6 +48,25 @@ export class AttendanceController {
   @ResponseMessage('Roster fetched successfully!')
   findRoster(@Query() query: FindRosterDto) {
     return this.rosterService.findRoster(query);
+  }
+
+  /**
+   * One payroll cycle: employees down, days across, totals on the right.
+   *
+   * The screen a month is reviewed on before it is locked, so its totals are
+   * computed by the same function that writes the locked snapshot — the sheet
+   * and payroll's input cannot disagree.
+   *
+   * `year`/`month` is the cycle's label, not a calendar filter: a 26-to-25 cycle
+   * labelled August starts in July, and this returns that cycle.
+   *
+   * Declared before the `:id`-shaped routes below so `monthly` is never read as
+   * an id, for the same reason `roster` and `bulk` are.
+   */
+  @Get('monthly')
+  @ResponseMessage('Monthly attendance fetched successfully!')
+  findMonthly(@Query() query: FindMonthlyDto) {
+    return this.monthlyService.findMonthly(query);
   }
 
   /**

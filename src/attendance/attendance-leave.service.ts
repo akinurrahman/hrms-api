@@ -114,6 +114,38 @@ export class AttendanceLeaveService {
   }
 
   /**
+   * `PlannedAbsence.id` → whether the leave it authorises is paid.
+   *
+   * The one field attendance reads off `LeaveType`, and the only thing that
+   * splits `paidLeaveDays` from `unpaidLeaveDays` at lock time. Asked of a whole
+   * month's leave days at once, mirroring `findApprovedForDate` — a period is
+   * thirty-one days times the headcount, and a lookup per row would be a round
+   * trip per leave day.
+   *
+   * Not filtered on `APPROVED`: the question is what an *existing attendance
+   * row* was charged to, and a day that points at an absence keeps pointing at
+   * it after the absence is cancelled. Reversion is `revertCancelledAbsence`'s
+   * job; leaving the day unclassifiable here would only block the lock on a row
+   * that is already recorded correctly.
+   */
+  async findPaidFlags(absenceIds: string[]): Promise<Map<string, boolean>> {
+    const flags = new Map<string, boolean>();
+
+    if (absenceIds.length === 0) return flags;
+
+    const absences = await this.prisma.plannedAbsence.findMany({
+      where: { id: { in: absenceIds } },
+      select: { id: true, leaveType: { select: { isPaid: true } } },
+    });
+
+    for (const absence of absences) {
+      flags.set(absence.id, absence.leaveType.isPaid);
+    }
+
+    return flags;
+  }
+
+  /**
    * Apply an approved absence to the attendance rows that already exist for the
    * days it covers.
    *
